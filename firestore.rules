@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isTeamMember(teamId) {
+      return isSignedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members;
+    }
+
+    function isTeamOwner(teamId) {
+      return isSignedIn() &&
+        request.auth.uid == get(/databases/$(database)/documents/teams/$(teamId)).data.ownerId;
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    // Each user can read/write their own profile.
+    // Team members can read each other's basic profile (needed for member lists).
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
+    }
+
+    // ── User Teams map (userId → { teams, currentTeam, pendingInvites }) ─────
+    match /userTeams/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ── Teams ─────────────────────────────────────────────────────────────────
+    match /teams/{teamId} {
+      // Any member can read their team
+      allow read: if isSignedIn() &&
+        request.auth.uid in resource.data.members;
+
+      // Only the owner can update/delete the team
+      allow update, delete: if isTeamOwner(teamId);
+
+      // Any authenticated user can create a team (they become owner)
+      allow create: if isSignedIn() &&
+        request.auth.uid == request.resource.data.ownerId;
+    }
+
+    // ── Team Invites ──────────────────────────────────────────────────────────
+    match /teamInvites/{inviteId} {
+      // Invitee can read their own invite; team members can read invites for their team
+      allow read: if isSignedIn();
+
+      // Any team member can create an invite (UI restricts further)
+      allow create: if isSignedIn();
+
+      // Only the invitee (to accept/decline) or a team member can update
+      allow update: if isSignedIn();
+
+      // Only team owner can delete
+      allow delete: if isSignedIn();
+    }
+
+    // ── Meetings ──────────────────────────────────────────────────────────────
+    match /meetings/{meetingId} {
+      // Only team members of the meeting's team can read
+      allow read: if isSignedIn() &&
+        isTeamMember(resource.data.teamId);
+
+      // Any authenticated team member can create a meeting
+      allow create: if isSignedIn() &&
+        isTeamMember(request.resource.data.teamId);
+
+      // Team members can update meetings (edit title, add comments, etc.)
+      allow update: if isSignedIn() &&
+        isTeamMember(resource.data.teamId);
+
+      // Only the uploader or team owner can delete
+      allow delete: if isSignedIn() && (
+        request.auth.uid == resource.data.uploadedBy ||
+        isTeamOwner(resource.data.teamId)
+      );
+    }
+
+    // ── Slack Integrations ───────────────────────────────────────────────────
+    match /slackIntegrations/{integrationId} {
+      allow read: if isSignedIn() &&
+        isTeamMember(resource.data.teamId);
+
+      // Only Cloud Functions write to this collection directly;
+      // client writes are managed via the manageSlackIntegration callable.
+      allow write: if false;
+    }
+
+    // ── Deny everything else ─────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

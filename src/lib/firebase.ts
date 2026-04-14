@@ -5,16 +5,17 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 
-// Firebase configuration
-// NOTE: Replace these with your own Firebase project config values
+// Firebase configuration — values are loaded from environment variables.
+// For local dev: set these in .env.local (gitignored).
+// For production: set these in your hosting platform's environment config.
 const firebaseConfig = {
-  apiKey: "AIzaSyBsLHBhu-66FhLoU9vj92Bcswcevx9bMms",
-  authDomain: "huddleai-a812c.firebaseapp.com",
-  projectId: "huddleai-a812c",
-  storageBucket: "huddleai-a812c.firebasestorage.app",
-  messagingSenderId: "785097766884",
-  appId: "1:785097766884:web:565f5673335410add1f9f1",
-  measurementId: "G-D32VHHW8EG"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 // Initialize Firebase

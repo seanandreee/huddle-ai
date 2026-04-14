@@ -73,9 +73,11 @@ export const processMeetingUpload = onObjectFinalized(
   { 
     bucket: config.storageBucket,
     region: config.region,
-    timeoutSeconds: 1800, // Increased to 30 minutes for longer videos
-    memory: "2GiB", // Increased memory for larger files
-    cpu: 2, // Increased CPU for faster processing
+    // Storage triggers (onObjectFinalized) are capped at 540s by Firebase.
+    // For longer videos, use the reprocessMeeting callable function which allows up to 3600s.
+    timeoutSeconds: 540,
+    memory: "2GiB",
+    cpu: 2,
     secrets: [openaiApiKey]
   },
   async (event) => {
@@ -437,72 +439,6 @@ function formatTranscriptResults(results: google.cloud.speech.v1.ISpeechRecognit
   return fullTranscript.trim();
 }
 
-/**
- * Generate summary from transcript using simple keyword extraction
- * In production, you might want to use a more sophisticated AI service
- */
-async function generateSummary(transcript: string): Promise<string> {
-  try {
-    // Simple summary generation - in production, use OpenAI, Vertex AI, etc.
-    const sentences = transcript.split(/[.!?]+/).filter(s => s.trim().length > 0);
-    
-    // Take first few sentences and key phrases
-    const summary = sentences.slice(0, 3).join(". ") + ".";
-    
-    // Add some basic analysis
-    const wordCount = transcript.split(/\s+/).length;
-    const speakerCount = (transcript.match(/Speaker \d+:/g) || []).length;
-    
-    return `${summary}\n\nMeeting Statistics:\n- Word count: ${wordCount}\n- Number of speakers: ${speakerCount}`;
-  } catch (error) {
-    logger.error("Summary generation error", error);
-    return "Summary generation failed. Please review the transcript manually.";
-  }
-}
-
-/**
- * Extract action items from transcript
- */
-async function extractActionItems(transcript: string): Promise<ActionItem[]> {
-  try {
-    const actionItems: ActionItem[] = [];
-    
-    // Simple keyword-based action item extraction
-    const actionKeywords = [
-      "action item",
-      "todo",
-      "to do",
-      "follow up",
-      "next step",
-      "assign",
-      "responsible for",
-      "will do",
-      "need to",
-      "should do"
-    ];
-    
-    const sentences = transcript.split(/[.!?]+/);
-    
-    sentences.forEach((sentence, index) => {
-      const lowerSentence = sentence.toLowerCase();
-      
-      if (actionKeywords.some(keyword => lowerSentence.includes(keyword))) {
-        actionItems.push({
-          id: `action_${index}`,
-          description: sentence.trim(),
-          status: "pending",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-      }
-    });
-    
-    return actionItems;
-  } catch (error) {
-    logger.error("Action item extraction error", error);
-    return [];
-  }
-}
 
 /**
  * Get video duration using ffmpeg
@@ -551,7 +487,9 @@ async function cleanupTempFiles(audioPath: string): Promise<void> {
 export const reprocessMeeting = onCall(
   { 
     region: "us-central1",
-    timeoutSeconds: 1800, // Increased to 30 minutes like the main processing function
+    // Callable functions allow up to 3600s — use the full hour for long video support.
+    // This is the primary path for processing videos longer than ~15 minutes.
+    timeoutSeconds: 3600,
     memory: "2GiB", // Increased memory for reprocessing
     cpu: 2, // Increased CPU
     secrets: [openaiApiKey]
@@ -663,14 +601,10 @@ async function processMeetingFile(filePath: string, meetingId: string, teamId: s
     // Extract audio from video
     const audioPath = await extractAudioFromVideo(filePath);
     
-    // Convert speech to text (with improved handling for longer files)
+    // Convert speech to text
     const transcript = await convertSpeechToText(audioPath, fileSizeMB);
     
-    // Generate basic summary and action items
-    const summary = await generateSummary(transcript);
-    const actionItems = await extractActionItems(transcript);
-    
-    // Generate AI insights using OpenAI
+    // Generate AI insights using OpenAI (includes summary and action items)
     let insights: MeetingInsights | null = null;
     try {
       insights = await generateMeetingInsights(transcript);
@@ -703,8 +637,6 @@ async function processMeetingFile(filePath: string, meetingId: string, teamId: s
       status: "processed",
       transcript,
       transcriptUrl: transcriptPath,
-      summary,
-      actionItems,
       duration,
       processedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -727,16 +659,6 @@ async function processMeetingFile(filePath: string, meetingId: string, teamId: s
     await cleanupTempFiles(audioPath);
 
     logger.info("Meeting processing completed", { meetingId, duration, fileSizeMB });
-
-    // Remove automatic Slack notification - now manual
-    // Get the full meeting data for Slack notification
-    // const meetingDoc = await admin.firestore().collection("meetings").doc(meetingId).get();
-    // const meetingData = meetingDoc.data();
-    
-    // Send Slack notification
-    // if (meetingData) {
-    //   await sendSlackNotification(meetingData, insights, teamId);
-    // }
   } catch (error) {
     logger.error("Error processing meeting file", error);
     

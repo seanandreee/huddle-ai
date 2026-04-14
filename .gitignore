@@ -12,7 +12,6 @@ dist
 dist-ssr
 *.local
 
-lib/firebase.ts
 
 # Editor directories and files
 .vscode/*
