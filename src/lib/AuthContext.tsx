@@ -7,7 +7,9 @@ import {
   signOut, 
   onAuthStateChanged,
   sendPasswordResetEmail,
-  updateProfile
+  updateProfile,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 
@@ -17,6 +19,7 @@ export interface AuthContextType {
   isLoading: boolean;
   signUp: (email: string, password: string) => Promise<UserCredential>;
   login: (email: string, password: string) => Promise<UserCredential>;
+  signInWithGoogle: () => Promise<UserCredential>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updateUserProfile: (displayName: string, photoURL?: string) => Promise<void>;
@@ -66,6 +69,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return sendPasswordResetEmail(auth, email);
   }
 
+  function signInWithGoogle(): Promise<UserCredential> {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    return signInWithPopup(auth, provider);
+  }
+
   async function updateUserProfile(displayName: string, photoURL?: string) {
     if (!auth.currentUser) throw new Error('No user is signed in');
     
@@ -77,10 +86,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const value = {
     currentUser,
-    user: currentUser, // Alias for compatibility
+    user: currentUser,
     isLoading,
     signUp,
     login,
+    signInWithGoogle,
     logout,
     resetPassword,
     updateUserProfile
