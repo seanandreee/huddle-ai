@@ -86,9 +86,11 @@ const Team = () => {
       const userTeams = await getUserTeams(currentUser.uid);
       
       if (!userTeams.currentTeam) {
-        // User doesn't have a team, redirect to team setup
-        console.log("No current team found, redirecting to setup");
-        navigate("/team-setup");
+        // Solo user — no team yet. Stay on dashboard, show upload CTA.
+        setIsLoadingTeam(false);
+        setIsLoadingMembers(false);
+        setIsLoadingMeetings(false);
+        setIsLoadingStats(false);
         return;
       }
       

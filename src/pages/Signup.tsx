@@ -48,8 +48,8 @@ const Signup = () => {
         description: "You've been signed up successfully."
       });
       
-      // Redirect to team setup page for new users
-      navigate("/team-setup");
+      // Redirect new users to dashboard — no team setup required
+      navigate("/team");
     } catch (error: any) {
       console.error("Signup error:", error);
       

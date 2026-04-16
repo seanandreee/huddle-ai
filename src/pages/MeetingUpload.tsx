@@ -60,40 +60,22 @@ const MeetingUpload = () => {
       try {
         setIsLoading(true);
         
-        // Get user's current team
         const userTeams = await getUserTeams(currentUser.uid);
-        
-        if (!userTeams.currentTeam) {
-          navigate("/team-setup");
-          return;
-        }
-        
-        const currentTeamId = userTeams.currentTeam;
+        const currentTeamId = userTeams.currentTeam || null;
         setTeamId(currentTeamId);
         
-        // Load team info
-        const team = await getTeamById(currentTeamId);
-        
-        if (!team) {
-          toast({
-            variant: "destructive",
-            title: "Team not found",
-            description: "We couldn't find your team. Please try again."
-          });
-          navigate("/team");
-          return;
+        if (currentTeamId) {
+          const team = await getTeamById(currentTeamId);
+          if (team) {
+            setTeamName(team.name);
+            const members = await getTeamMembersForSelect(currentTeamId);
+            setTeamMembers(members);
+            setSelectedParticipants([currentUser.uid]);
+          }
+        } else {
+          // Solo user — no team yet, upload will be personal
+          setSelectedParticipants([currentUser.uid]);
         }
-        
-        setTeamName(team.name);
-        
-        // Load team members for participant selection
-        const members = await getTeamMembersForSelect(currentTeamId);
-        setTeamMembers(members);
-        
-        // Add current user to selected participants by default
-        const currentUserId = currentUser.uid;
-        setSelectedParticipants([currentUserId]);
-        
       } catch (error) {
         console.error("Error loading team data:", error);
         toast({

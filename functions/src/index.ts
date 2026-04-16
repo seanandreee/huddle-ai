@@ -84,13 +84,16 @@ export const processMeetingUpload = onObjectFinalized(
     const filePath = event.data.name;
     const contentType = event.data.contentType;
 
-    // Only process video files in the meetings folder
-    if (!filePath.startsWith("meetings/") || !contentType?.startsWith("video/")) {
-      logger.info("Skipping non-meeting video file", { filePath, contentType });
+    // Process video and audio files in the meetings folder
+    const isVideo = contentType?.startsWith("video/");
+    const isAudio = contentType?.startsWith("audio/");
+
+    if (!filePath.startsWith("meetings/") || (!isVideo && !isAudio)) {
+      logger.info("Skipping non-meeting file", { filePath, contentType });
       return;
     }
 
-    logger.info("Processing meeting upload", { filePath });
+    logger.info("Processing meeting upload", { filePath, contentType, isAudio });
 
     try {
       // Extract meeting ID from file path (meetings/teamId/meetingId.ext)
@@ -106,7 +109,7 @@ export const processMeetingUpload = onObjectFinalized(
       });
 
       // Process the meeting using the shared helper function
-      await processMeetingFile(filePath, meetingId, teamId);
+      await processMeetingFile(filePath, meetingId, teamId, isAudio);
     } catch (error) {
       logger.error("Error processing meeting", error);
       
@@ -583,7 +586,7 @@ export const reprocessMeeting = onCall(
 /**
  * Helper function to process meeting files (used by both storage trigger and manual reprocessing)
  */
-async function processMeetingFile(filePath: string, meetingId: string, teamId: string): Promise<void> {
+async function processMeetingFile(filePath: string, meetingId: string, teamId: string, isAudio = false): Promise<void> {
   try {
     // Check file size before processing
     const bucket = admin.storage().bucket();
@@ -592,15 +595,26 @@ async function processMeetingFile(filePath: string, meetingId: string, teamId: s
     const fileSizeBytes = typeof metadata.size === 'string' ? parseInt(metadata.size) : (metadata.size || 0);
     const fileSizeMB = fileSizeBytes / (1024 * 1024);
     
-    logger.info("Processing video file", { 
+    logger.info("Processing meeting file", { 
       filePath, 
       fileSizeMB: Math.round(fileSizeMB * 100) / 100,
-      meetingId 
+      meetingId,
+      isAudio
     });
 
-    // Extract audio from video
-    const audioPath = await extractAudioFromVideo(filePath);
-    
+    // For audio files, download directly — skip FFmpeg extraction
+    let audioPath: string;
+    if (isAudio) {
+      const tempDir = (await import("os")).tmpdir();
+      const tempPath = require("path").join(tempDir, `audio_${Date.now()}_${meetingId}.wav`);
+      await bucket.file(filePath).download({ destination: tempPath });
+      audioPath = tempPath;
+      logger.info("Audio file downloaded directly, skipping FFmpeg", { audioPath });
+    } else {
+      // Extract audio from video using FFmpeg
+      audioPath = await extractAudioFromVideo(filePath);
+    }
+
     // Convert speech to text
     const transcript = await convertSpeechToText(audioPath, fileSizeMB);
     
