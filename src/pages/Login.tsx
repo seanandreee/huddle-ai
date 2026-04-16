@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { MessageSquare } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { checkUserHasTeam } from "@/lib/db";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -30,15 +29,8 @@ const Login = () => {
         description: "You have been logged in successfully.",
       });
       
-      // Check if the user is already part of a team
-      const hasTeam = await checkUserHasTeam(userCredential.user.uid);
-      
-      // Redirect based on team membership
-      if (hasTeam) {
-        navigate("/team"); // User already has a team
-      } else {
-        navigate("/team-setup"); // User needs to create or join a team
-      }
+      // Always go to /team — the dashboard handles the solo vs team view
+      navigate("/team");
     } catch (error) {
       console.error("Login error:", error);
       toast({
@@ -56,8 +48,7 @@ const Login = () => {
     try {
       const userCredential = await signInWithGoogle();
       toast({ title: "Signed in with Google" });
-      const hasTeam = await checkUserHasTeam(userCredential.user.uid);
-      navigate(hasTeam ? "/team" : "/team-setup");
+      navigate("/team");
     } catch (error) {
       console.error("Google sign-in error:", error);
       toast({

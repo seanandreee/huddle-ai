@@ -82,7 +82,7 @@ const Signup = () => {
       const userCredential = await signInWithGoogle();
       toast({ title: "Signed in with Google", description: "Welcome to HuddleAI!" });
       const hasTeam = await checkUserHasTeam(userCredential.user.uid);
-      navigate(hasTeam ? "/team" : "/team-setup");
+      navigate("/team");
     } catch (error) {
       console.error("Google sign-in error:", error);
       toast({
