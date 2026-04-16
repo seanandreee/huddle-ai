@@ -324,6 +324,63 @@ const Team = () => {
     );
   }
 
+  // SOLO_EMPTY: authenticated user with no team and no meetings
+  if (!team) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        {/* Navigation */}
+        <nav className="px-6 py-4 flex justify-between items-center border-b bg-white/80 backdrop-blur-sm">
+          <div className="flex items-center space-x-2">
+            <Link to="/" className="flex items-center space-x-2">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <MessageSquare className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xl font-bold text-gray-900">HuddleAI</span>
+            </Link>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="rounded-full size-10 p-0">
+                <Avatar className="h-9 w-9">
+                  <AvatarImage src={currentUser?.photoURL || ''} alt={currentUser?.displayName || 'User'} />
+                  <AvatarFallback>
+                    {currentUser?.displayName?.charAt(0).toUpperCase() || currentUser?.email?.charAt(0).toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
+                <LogOut className="w-4 h-4 mr-2" />
+                {isLoggingOut ? "Logging out..." : "Log out"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </nav>
+
+        {/* SOLO_EMPTY body */}
+        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-73px)] text-center px-6">
+          <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center mb-6">
+            <Upload className="w-10 h-10 text-blue-600" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-3">Upload your first meeting</h1>
+          <p className="text-gray-500 text-lg mb-8 max-w-sm">
+            Get an AI summary in minutes
+          </p>
+          <Link to="/meeting-upload">
+            <Button
+              size="lg"
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-10 py-6 text-lg rounded-xl shadow-lg hover:shadow-xl transition-all"
+            >
+              <Upload className="w-5 h-5 mr-3" />
+              Upload Meeting
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Navigation */}

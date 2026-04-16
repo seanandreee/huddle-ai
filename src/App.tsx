@@ -53,6 +53,9 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            {/* /team is the canonical dashboard route.
+                /dashboard is an alias so PRD/doc links resolve correctly. */}
+            <Route path="/dashboard" element={<Navigate to="/team" replace />} />
             <Route path="/team-setup" element={
               <ProtectedRoute>
                 <TeamSetup />

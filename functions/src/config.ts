@@ -10,7 +10,7 @@ export const config = {
   region: "us-central1",
   
   // Frontend URL for links in notifications
-  frontendUrl: process.env.FRONTEND_URL || "https://huddleai-a812c.web.app",
+  frontendUrl: process.env.FRONTEND_URL || "https://huddleai.app",
   
   // OpenAI configuration
   openai: {
