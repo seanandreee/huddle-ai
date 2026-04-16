@@ -605,8 +605,8 @@ async function processMeetingFile(filePath: string, meetingId: string, teamId: s
     // For audio files, download directly — skip FFmpeg extraction
     let audioPath: string;
     if (isAudio) {
-      const tempDir = (await import("os")).tmpdir();
-      const tempPath = require("path").join(tempDir, `audio_${Date.now()}_${meetingId}.wav`);
+      const tempDir = os.tmpdir();
+      const tempPath = path.join(tempDir, `audio_${Date.now()}_${meetingId}.wav`);
       await bucket.file(filePath).download({ destination: tempPath });
       audioPath = tempPath;
       logger.info("Audio file downloaded directly, skipping FFmpeg", { audioPath });
