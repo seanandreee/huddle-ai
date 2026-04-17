@@ -28,8 +28,10 @@ import {
   getRecentMeetingsForTeam,
   Meeting,
   getTeamMeetingStats,
-  ensureUserProfileExists
+  ensureUserProfileExists,
+  getMeetingsByUser
 } from "@/lib/db";
+import { resolveUserStage, UserStage } from "@/lib/userStage";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -56,6 +58,9 @@ const Team = () => {
   const [loading, setLoading] = useState(true);
   const [teamData, setTeamData] = useState<any>(null);
   const [slackIntegration, setSlackIntegration] = useState<any>(null);
+  const [userStage, setUserStage] = useState<UserStage | null>(null);
+  const [soloMeetings, setSoloMeetings] = useState<Meeting[]>([]);
+  const [isLoadingStage, setIsLoadingStage] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
@@ -86,11 +91,15 @@ const Team = () => {
       const userTeams = await getUserTeams(currentUser.uid);
       
       if (!userTeams.currentTeam) {
-        // Solo user — no team yet. Stay on dashboard, show upload CTA.
+        // Solo user — resolve stage (EMPTY vs ACTIVE) then stop loading
+        const stageResult = await resolveUserStage(currentUser.uid, null);
+        setUserStage(stageResult.stage);
+        setSoloMeetings(stageResult.soloMeetings);
         setIsLoadingTeam(false);
         setIsLoadingMembers(false);
         setIsLoadingMeetings(false);
         setIsLoadingStats(false);
+        setIsLoadingStage(false);
         return;
       }
       
@@ -324,49 +333,62 @@ const Team = () => {
     );
   }
 
-  // SOLO_EMPTY: authenticated user with no team and no meetings
-  if (!team) {
+  // Shared solo nav (no team actions)
+  const SoloNav = () => (
+    <nav className="px-6 py-4 flex justify-between items-center border-b bg-white/80 backdrop-blur-sm sticky top-0 z-10">
+      <Link to="/" className="flex items-center space-x-2">
+        <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+          <MessageSquare className="w-5 h-5 text-white" />
+        </div>
+        <span className="text-xl font-bold text-gray-900">HuddleAI</span>
+      </Link>
+      <div className="flex items-center gap-3">
+        <Link to="/meeting-upload">
+          <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+            <Upload className="w-4 h-4 mr-2" />
+            Upload Meeting
+          </Button>
+        </Link>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="rounded-full size-10 p-0">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={currentUser?.photoURL || ''} alt={currentUser?.displayName || 'User'} />
+                <AvatarFallback>
+                  {currentUser?.displayName?.charAt(0).toUpperCase() || currentUser?.email?.charAt(0).toUpperCase() || 'U'}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="flex flex-col px-2 py-1.5">
+              <p className="font-medium text-sm">{currentUser?.displayName || 'User'}</p>
+              <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
+            </div>
+            <DropdownMenuSeparator />
+            <Link to="/profile"><DropdownMenuItem><User className="w-4 h-4 mr-2" />Profile</DropdownMenuItem></Link>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
+              <LogOut className="w-4 h-4 mr-2" />
+              {isLoggingOut ? 'Logging out...' : 'Log out'}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </nav>
+  );
+
+  // SOLO_EMPTY — no team, no meetings
+  if (!team && userStage === 'SOLO_EMPTY') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        {/* Navigation */}
-        <nav className="px-6 py-4 flex justify-between items-center border-b bg-white/80 backdrop-blur-sm">
-          <div className="flex items-center space-x-2">
-            <Link to="/" className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <MessageSquare className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold text-gray-900">HuddleAI</span>
-            </Link>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="rounded-full size-10 p-0">
-                <Avatar className="h-9 w-9">
-                  <AvatarImage src={currentUser?.photoURL || ''} alt={currentUser?.displayName || 'User'} />
-                  <AvatarFallback>
-                    {currentUser?.displayName?.charAt(0).toUpperCase() || currentUser?.email?.charAt(0).toUpperCase() || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
-                <LogOut className="w-4 h-4 mr-2" />
-                {isLoggingOut ? "Logging out..." : "Log out"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </nav>
-
-        {/* SOLO_EMPTY body */}
+        <SoloNav />
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-73px)] text-center px-6">
           <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl flex items-center justify-center mb-6">
             <Upload className="w-10 h-10 text-blue-600" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-3">Upload your first meeting</h1>
-          <p className="text-gray-500 text-lg mb-8 max-w-sm">
-            Get an AI summary in minutes
-          </p>
+          <p className="text-gray-500 text-lg mb-8 max-w-sm">Get an AI summary in minutes</p>
           <Link to="/meeting-upload">
             <Button
               size="lg"
@@ -377,6 +399,99 @@ const Team = () => {
             </Button>
           </Link>
         </div>
+      </div>
+    );
+  }
+
+  // SOLO_ACTIVE — no team, but has meetings
+  if (!team && userStage === 'SOLO_ACTIVE') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        <SoloNav />
+        <div className="px-6 py-8 max-w-4xl mx-auto">
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-gray-900">Your Meetings</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              {soloMeetings.length} meeting{soloMeetings.length !== 1 ? 's' : ''} processed
+            </p>
+          </div>
+
+          {/* Meeting list */}
+          <div className="space-y-3">
+            {soloMeetings.map((meeting) => (
+              <Link key={meeting.id} to={`/meeting-details?id=${meeting.id}`}>
+                <Card className="border-0 shadow-sm hover:shadow-md transition-all cursor-pointer group">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-purple-100 rounded-lg flex items-center justify-center shrink-0">
+                          <FileText className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors truncate">
+                            {meeting.title}
+                          </p>
+                          <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {meeting.date?.toDate ? meeting.date.toDate().toLocaleDateString() : '—'}
+                            </span>
+                            {meeting.duration > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {Math.round(meeting.duration / 60)}m
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="shrink-0 ml-4">
+                        {meeting.status === 'processed' && (
+                          <Badge className="bg-green-100 text-green-800 text-xs">Processed</Badge>
+                        )}
+                        {meeting.status === 'processing' && (
+                          <Badge className="bg-blue-100 text-blue-800 text-xs">Processing</Badge>
+                        )}
+                        {meeting.status === 'uploaded' && (
+                          <Badge variant="secondary" className="text-xs">Uploaded</Badge>
+                        )}
+                        {meeting.status === 'failed' && (
+                          <Badge variant="destructive" className="text-xs">Failed</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+
+          {/* Invite nudge */}
+          <Card className="border-0 shadow-sm mt-8 bg-gradient-to-r from-blue-50 to-purple-50">
+            <CardContent className="p-5 flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 text-sm">Working with a team?</p>
+                <p className="text-xs text-gray-500 mt-0.5">Create a team to collaborate on meetings</p>
+              </div>
+              <Link to="/team-setup">
+                <Button size="sm" variant="outline">
+                  <Users className="w-4 h-4 mr-2" />
+                  Create Team
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // SOLO fallback while stage is still loading (brief moment)
+  if (!team) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }

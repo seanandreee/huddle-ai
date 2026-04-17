@@ -26,9 +26,9 @@ import { Meeting, UserProfile, getUserById } from './db';
 export interface MeetingUploadData {
   title: string;
   description?: string;
-  teamId: string;
+  teamId: string | null;  // null for solo (no-team) uploads
   date: Date;
-  participants: string[]; // Array of userIds or emails
+  participants: string[];
   file: File;
 }
 
@@ -63,7 +63,9 @@ export const uploadMeeting = async (
     
     // Create a reference to the file in Firebase Storage
     const fileExtension = meetingData.file.name.split('.').pop();
-    const filePath = `meetings/${meetingData.teamId}/${meetingId}.${fileExtension}`;
+    // Solo uploads (no team) use the user's UID as the path segment
+    const storageSegment = meetingData.teamId || currentUser.uid;
+    const filePath = `meetings/${storageSegment}/${meetingId}.${fileExtension}`;
     const storageRef = ref(storage, filePath);
     
     // Start uploading the file

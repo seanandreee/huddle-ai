@@ -91,7 +91,7 @@ export interface Meeting {
   id: string;
   title: string;
   description?: string;
-  teamId: string;
+  teamId: string | null; // null for solo (no-team) uploads
   uploadedBy: string;
   uploadedByName: string;
   date: Timestamp;
@@ -589,6 +589,25 @@ export const getAllMeetingsForTeam = async (
   } catch (error) {
     console.error("Error getting all team meetings:", error);
     throw error;
+  }
+};
+
+// Get recent meetings uploaded by a specific user (solo / no-team use case)
+export const getMeetingsByUser = async (userId: string, count: number = 10): Promise<Meeting[]> => {
+  try {
+    if (!userId) return [];
+    const meetingsRef = collection(db, 'meetings');
+    const q = query(
+      meetingsRef,
+      where('uploadedBy', '==', userId),
+      orderBy('date', 'desc'),
+      limit(count)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Meeting));
+  } catch (error) {
+    console.error('Error getting user meetings:', error);
+    return [];
   }
 };
 
