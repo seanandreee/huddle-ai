@@ -27,6 +27,9 @@ export interface MeetingUploadData {
   title: string;
   description?: string;
   teamId: string | null;  // null for solo (no-team) uploads
+  // Workspace context — set at upload time, immutable
+  workspaceType: 'personal' | 'team';
+  workspaceId: string | null; // null for personal, teamId for team
   date: Date;
   participants: string[];
   file: File;
@@ -77,10 +80,17 @@ export const uploadMeeting = async (
     
     // Initial meeting data
     const timestamp = serverTimestamp();
+    // Derive workspace context (use explicit fields if provided, fall back from teamId)
+    const workspaceType = meetingData.workspaceType ?? (meetingData.teamId ? 'team' : 'personal');
+    const workspaceId = meetingData.workspaceId !== undefined ? meetingData.workspaceId : meetingData.teamId;
+
     const meetingMetadata: Omit<Meeting, 'id'> = {
       title: meetingData.title,
       description: meetingData.description || '',
       teamId: meetingData.teamId,
+      workspaceType,
+      workspaceId,
+      sourceLabel: 'Uploaded',
       uploadedBy: currentUser.uid,
       uploadedByName: userProfile.displayName,
       date: Timestamp.fromDate(meetingData.date),

@@ -32,3 +32,6 @@ dist-ssr
 
 #PRD
 .pdf
+# Service account keys — never commit these
+functions/service-account.json
+service-account.json

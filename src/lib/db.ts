@@ -70,6 +70,7 @@ export interface UserProfile {
   lastActive?: Timestamp;
   joinedDate?: Timestamp;
   teamJoinDates?: Record<string, Timestamp>; // Record of team IDs to join dates
+  onboardingComplete?: boolean; // true after user completes the Sprint 2B onboarding fork
 }
 
 export interface TeamMember extends UserProfile {
@@ -92,12 +93,17 @@ export interface Meeting {
   title: string;
   description?: string;
   teamId: string | null; // null for solo (no-team) uploads
+  // Workspace context — set at upload time, immutable
+  workspaceType?: 'personal' | 'team';
+  workspaceId?: string | null; // null for personal, teamId for team
   uploadedBy: string;
   uploadedByName: string;
   date: Timestamp;
   duration: number; // in seconds
   participants: string[]; // array of user IDs or names
   status: 'uploaded' | 'processing' | 'processed' | 'failed';
+  // Source label for auto-ingested meetings (Phase 3)
+  sourceLabel?: 'Uploaded' | 'Google Meet (Transcript)' | 'Google Meet (Recording)';
   summary?: string;
   transcript?: string;
   transcriptUrl?: string;
@@ -608,6 +614,85 @@ export const getMeetingsByUser = async (userId: string, count: number = 10): Pro
   } catch (error) {
     console.error('Error getting user meetings:', error);
     return [];
+  }
+};
+
+/**
+ * getMeetingsByWorkspace — primary workspace-filtered query (Sprint 2A)
+ *
+ * Personal workspace: returns meetings where uploadedBy == userId AND workspaceType == 'personal'
+ * Team workspace: returns meetings where workspaceId == teamId AND workspaceType == 'team'
+ *
+ * Falls back to legacy teamId / uploadedBy queries for meetings that pre-date the migration
+ * (workspaceType field may be absent on old docs).
+ */
+export const getMeetingsByWorkspace = async (
+  workspaceType: 'personal' | 'team',
+  userId: string,
+  teamId: string | null,
+  count: number = 20
+): Promise<Meeting[]> => {
+  try {
+    const meetingsRef = collection(db, 'meetings');
+
+    if (workspaceType === 'personal') {
+      // Personal: meetings uploaded by this user with no team context
+      const q = query(
+        meetingsRef,
+        where('uploadedBy', '==', userId),
+        where('workspaceType', '==', 'personal'),
+        orderBy('date', 'desc'),
+        limit(count)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as Meeting));
+    } else {
+      // Team: all meetings in this team's workspace
+      if (!teamId) return [];
+      const q = query(
+        meetingsRef,
+        where('workspaceId', '==', teamId),
+        where('workspaceType', '==', 'team'),
+        orderBy('date', 'desc'),
+        limit(count)
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as Meeting));
+    }
+  } catch (error) {
+    console.error('getMeetingsByWorkspace error:', error);
+    return [];
+  }
+};
+
+// --- Onboarding helpers (Sprint 2B) ---
+
+/** Mark onboarding as complete for a user (called after fork choice is made). */
+export const setOnboardingComplete = async (userId: string): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, { onboardingComplete: true });
+  } catch (error) {
+    // Doc may not exist yet on first Google sign-in — use setDoc with merge
+    try {
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, { onboardingComplete: true }, { merge: true });
+    } catch (e) {
+      console.error('setOnboardingComplete error:', e);
+    }
+  }
+};
+
+/** Returns true if the user has completed the onboarding fork. */
+export const getUserOnboardingStatus = async (userId: string): Promise<boolean> => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) return false;
+    return snap.data()?.onboardingComplete === true;
+  } catch (error) {
+    console.error('getUserOnboardingStatus error:', error);
+    return false;
   }
 };
 
