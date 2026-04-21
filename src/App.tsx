@@ -22,6 +22,7 @@ import MemberManagement from "./pages/MemberManagement";
 import MeetingManagement from "./pages/MeetingManagement";
 import ActionItems from "./pages/ActionItems";
 import NotFound from "./pages/NotFound";
+import OnboardingFork from "./pages/OnboardingFork";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,11 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/onboarding" element={
+              <ProtectedRoute>
+                <OnboardingFork />
+              </ProtectedRoute>
+            } />
             {/* /team is the canonical dashboard route.
                 /dashboard is an alias so PRD/doc links resolve correctly. */}
             <Route path="/dashboard" element={<Navigate to="/team" replace />} />

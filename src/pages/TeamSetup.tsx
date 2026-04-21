@@ -14,7 +14,8 @@ import {
   getInvitesByEmail, 
   acceptTeamInvite, 
   declineTeamInvite, 
-  TeamInvite 
+  TeamInvite,
+  setOnboardingComplete
 } from "@/lib/db";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -93,6 +94,8 @@ const TeamSetup = () => {
       };
 
       await createTeam(team);
+      // Mark onboarding as complete — user came from the fork screen
+      if (currentUser?.uid) await setOnboardingComplete(currentUser.uid);
       
       toast({
         title: "Team created successfully",
@@ -116,6 +119,8 @@ const TeamSetup = () => {
     setIsProcessing(true);
     try {
       await acceptTeamInvite(inviteId, currentUser?.uid as string);
+      // Mark onboarding as complete — user joined via team setup
+      if (currentUser?.uid) await setOnboardingComplete(currentUser.uid);
       
       toast({
         title: "Invite accepted",

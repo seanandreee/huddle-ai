@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { MessageSquare } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { checkUserHasTeam } from "@/lib/db";
+import { getUserOnboardingStatus } from "@/lib/db";
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -48,8 +48,8 @@ const Signup = () => {
         description: "You've been signed up successfully."
       });
       
-      // Redirect new users to dashboard — no team setup required
-      navigate("/team");
+      // New users always go to /onboarding — flag is always false on fresh account
+      navigate("/onboarding");
     } catch (error: any) {
       console.error("Signup error:", error);
       
@@ -81,8 +81,9 @@ const Signup = () => {
     try {
       const userCredential = await signInWithGoogle();
       toast({ title: "Signed in with Google", description: "Welcome to HuddleAI!" });
-      const hasTeam = await checkUserHasTeam(userCredential.user.uid);
-      navigate("/team");
+      // Check onboarding flag: new users → /onboarding, returning users → /team
+      const done = await getUserOnboardingStatus(userCredential.user.uid);
+      navigate(done ? "/team" : "/onboarding");
     } catch (error) {
       console.error("Google sign-in error:", error);
       toast({
