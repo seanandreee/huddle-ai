@@ -27,7 +27,8 @@ import {
   Meeting,
   getTeamMeetingStats,
   ensureUserProfileExists,
-  getMeetingsByWorkspace
+  getMeetingsByWorkspace,
+  SlackIntegration
 } from "@/lib/db";
 import { resolveUserStage, UserStage } from "@/lib/userStage";
 import { doc, getDoc } from "firebase/firestore";
@@ -57,8 +58,8 @@ const Team = () => {
   } | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [teamData, setTeamData] = useState<any>(null);
-  const [slackIntegration, setSlackIntegration] = useState<any>(null);
+  const [teamData, setTeamData] = useState<TeamType | null>(null);
+  const [slackIntegration, setSlackIntegration] = useState<SlackIntegration | null>(null);
   const [userStage, setUserStage] = useState<UserStage | null>(null);
   const [soloMeetings, setSoloMeetings] = useState<Meeting[]>([]);
   const [isLoadingStage, setIsLoadingStage] = useState(true);
@@ -298,7 +299,7 @@ const Team = () => {
     }
   };
   
-  const formatDate = (timestamp?: any) => {
+  const formatDate = (timestamp?: { toDate?: () => Date } | Date | string | number) => {
     if (!timestamp) return "";
     
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -49,7 +49,7 @@ export const SlackIntegration: React.FC<SlackIntegrationProps> = ({
 
     try {
       const action = currentIntegration ? 'update' : 'create';
-      const data: any = {
+      const data: Record<string, string> = {
         action,
         teamId,
         userId: user.uid,
@@ -65,8 +65,8 @@ export const SlackIntegration: React.FC<SlackIntegrationProps> = ({
       setSuccess(currentIntegration ? 'Slack integration updated successfully!' : 'Slack integration created successfully!');
       setShowForm(false);
       onIntegrationChange();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save Slack integration');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save Slack integration');
     } finally {
       setIsLoading(false);
     }
@@ -87,8 +87,8 @@ export const SlackIntegration: React.FC<SlackIntegrationProps> = ({
       });
       
       setSuccess('Test message sent to Slack! Check your channel.');
-    } catch (err: any) {
-      setError(err.message || 'Failed to send test message');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to send test message');
     } finally {
       setIsTesting(false);
     }
@@ -111,25 +111,25 @@ export const SlackIntegration: React.FC<SlackIntegrationProps> = ({
       setSuccess('Slack integration removed successfully!');
       setShowForm(true);
       onIntegrationChange();
-    } catch (err: any) {
-      setError(err.message || 'Failed to remove Slack integration');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to remove Slack integration');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setFormData({
       channelId: currentIntegration?.channelId || '',
       channelName: currentIntegration?.channelName || '',
     });
     setError(null);
     setSuccess(null);
-  };
+  }, [currentIntegration]);
 
   useEffect(() => {
     resetForm();
-  }, [currentIntegration]);
+  }, [resetForm]);
 
   return (
     <Card>

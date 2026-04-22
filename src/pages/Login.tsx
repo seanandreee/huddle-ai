@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,8 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite');
   const { login, signInWithGoogle } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -29,8 +31,12 @@ const Login = () => {
         description: "You have been logged in successfully.",
       });
       
-      // Always go to /team — the dashboard handles the solo vs team view
-      navigate("/team");
+      // Navigate to team-setup if invite exists, otherwise standard dashboard
+      if (inviteToken) {
+        navigate(`/team-setup?invite=${inviteToken}`);
+      } else {
+        navigate("/team");
+      }
     } catch (error) {
       console.error("Login error:", error);
       toast({
@@ -48,7 +54,11 @@ const Login = () => {
     try {
       const userCredential = await signInWithGoogle();
       toast({ title: "Signed in with Google" });
-      navigate("/team");
+      if (inviteToken) {
+        navigate(`/team-setup?invite=${inviteToken}`);
+      } else {
+        navigate("/team");
+      }
     } catch (error) {
       console.error("Google sign-in error:", error);
       toast({
@@ -146,7 +156,7 @@ const Login = () => {
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
                 Don't have an account?{" "}
-                <Link to="/signup" className="text-blue-600 hover:underline font-medium">
+                <Link to={inviteToken ? `/signup?invite=${inviteToken}` : "/signup"} className="text-blue-600 hover:underline font-medium">
                   Sign up
                 </Link>
               </p>

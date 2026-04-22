@@ -41,8 +41,11 @@ service cloud.firestore {
       allow read: if isSignedIn() &&
         request.auth.uid in resource.data.members;
 
-      // Only the owner can update/delete the team
-      allow update, delete: if isTeamOwner(teamId);
+      // Only the owner can fully update/delete the team, but invited users can update to join, and members can update to leave
+      allow update: if isTeamOwner(teamId) || 
+                    (isSignedIn() && request.auth.token.email in resource.data.pendingInvites) ||
+                    (isTeamMember(teamId) && !(request.auth.uid in request.resource.data.members));
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.ownerId;
 
       // Any authenticated user can create a team (they become owner)
       allow create: if isSignedIn() &&
@@ -69,28 +72,32 @@ service cloud.firestore {
       // Allow read if user is a team member OR if it's their personal meeting
       allow read: if isSignedIn() && (
         (resource.data.teamId != null && isTeamMember(resource.data.teamId)) ||
+        (resource.data.workspaceId != null && isTeamMember(resource.data.workspaceId)) ||
         (resource.data.workspaceType == 'personal' && resource.data.uploadedBy == request.auth.uid) ||
-        (resource.data.teamId == null && resource.data.uploadedBy == request.auth.uid)
+        (resource.data.teamId == null && resource.data.workspaceId == null && resource.data.uploadedBy == request.auth.uid)
       );
 
       // Allow create if uploading to a team they belong to, OR uploading personal meeting
       allow create: if isSignedIn() && (
         (request.resource.data.teamId != null && isTeamMember(request.resource.data.teamId)) ||
+        (request.resource.data.workspaceId != null && isTeamMember(request.resource.data.workspaceId)) ||
         (request.resource.data.workspaceType == 'personal' && request.resource.data.uploadedBy == request.auth.uid) ||
-        (request.resource.data.teamId == null && request.resource.data.uploadedBy == request.auth.uid)
+        (request.resource.data.teamId == null && request.resource.data.workspaceId == null && request.resource.data.uploadedBy == request.auth.uid)
       );
 
       // Allow update if team member OR personal meeting
       allow update: if isSignedIn() && (
         (resource.data.teamId != null && isTeamMember(resource.data.teamId)) ||
+        (resource.data.workspaceId != null && isTeamMember(resource.data.workspaceId)) ||
         (resource.data.workspaceType == 'personal' && resource.data.uploadedBy == request.auth.uid) ||
-        (resource.data.teamId == null && resource.data.uploadedBy == request.auth.uid)
+        (resource.data.teamId == null && resource.data.workspaceId == null && resource.data.uploadedBy == request.auth.uid)
       );
 
       // Only the uploader or team owner can delete
       allow delete: if isSignedIn() && (
         request.auth.uid == resource.data.uploadedBy ||
-        (resource.data.teamId != null && isTeamOwner(resource.data.teamId))
+        (resource.data.teamId != null && isTeamOwner(resource.data.teamId)) ||
+        (resource.data.workspaceId != null && isTeamOwner(resource.data.workspaceId))
       );
     }
 

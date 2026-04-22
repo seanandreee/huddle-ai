@@ -1210,8 +1210,8 @@ export const createActionItem = async (actionItemData: {
       dueDate: actionItemData.dueDate,
       status: actionItemData.status || 'pending',
       meetingId: actionItemData.meetingId,
-      createdAt: now as any, // Use regular Date instead of serverTimestamp
-      updatedAt: now as any  // Use regular Date instead of serverTimestamp
+      createdAt: Timestamp.fromDate(now),
+      updatedAt: Timestamp.fromDate(now)
     };
     
     // Add the action item to the meeting's actionItems array
@@ -1263,7 +1263,7 @@ export const updateActionItem = async (
           return {
             ...item,
             ...updates,
-            updatedAt: now as any // Use regular Date instead of serverTimestamp
+            updatedAt: Timestamp.fromDate(now) // Use regular Date instead of serverTimestamp
           };
         }
         return item;
@@ -1286,7 +1286,7 @@ export const updateActionItem = async (
           return {
             ...item,
             ...updates,
-            updatedAt: now as any // Use regular Date instead of serverTimestamp
+            updatedAt: Timestamp.fromDate(now) // Use regular Date instead of serverTimestamp
           };
         }
         return item;

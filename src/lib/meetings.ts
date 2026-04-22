@@ -22,7 +22,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, storage } from './firebase';
 import { auth } from './firebase';
 import { Meeting, UserProfile, getUserById, Team } from './db';
-import { deleteDoc, writeBatch } from 'firebase/firestore';
+import { writeBatch } from 'firebase/firestore';
 
 export interface MeetingUploadData {
   title: string;
@@ -389,7 +389,7 @@ export const updateMeeting = async (meetingId: string, updateData: MeetingUpdate
       throw new Error("Meeting not found");
     }
     
-    const updateObject: Record<string, any> = {
+    const updateObject: Record<string, unknown> = {
       updatedAt: serverTimestamp()
     };
     
@@ -446,7 +446,7 @@ export const addCommentToMeeting = async (meetingId: string, commentText: string
       userName: userProfile.displayName,
       userPhotoURL: userProfile.photoURL || null,
       text: commentText,
-      timestamp: now as any // Use regular Date instead of serverTimestamp
+      timestamp: Timestamp.fromDate(now) // Use regular Date instead of serverTimestamp
     };
     
     await updateDoc(meetingRef, {
@@ -479,7 +479,7 @@ export const deleteComment = async (meetingId: string, commentId: string): Promi
     
     const meetingData = meetingDoc.data();
     const comments = meetingData.comments || [];
-    const updatedComments = comments.filter((comment: any) => comment.id !== commentId);
+    const updatedComments = comments.filter((comment: { id: string }) => comment.id !== commentId);
     
     await updateDoc(meetingRef, {
       comments: updatedComments,
@@ -535,6 +535,15 @@ export const deleteTeamAndMeetings = async (
       });
       await batch.commit();
     }
+
+    // Clean up team invites
+    const invitesQ = query(collection(db, 'teamInvites'), where('teamId', '==', teamId));
+    const invitesSnap = await getDocs(invitesQ);
+    const inviteBatch = writeBatch(db);
+    invitesSnap.docs.forEach((d) => {
+      inviteBatch.delete(d.ref);
+    });
+    await inviteBatch.commit();
 
     // Delete team Doc
     await deleteDoc(teamRef);

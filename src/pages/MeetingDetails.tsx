@@ -34,7 +34,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Meeting, getUserById, UserProfile, Comment, ActionItem, getTeamMembers, TeamMember, createActionItem, updateActionItem, deleteActionItem } from "@/lib/db";
+import { Meeting, getUserById, UserProfile, Comment, ActionItem, getTeamMembers, TeamMember, createActionItem, updateActionItem, deleteActionItem, Team, SlackIntegration } from "@/lib/db";
 import { deleteMeeting, updateMeeting, addCommentToMeeting, deleteComment, pollMeetingStatus, reprocessMeeting } from "@/lib/meetings";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -109,8 +109,8 @@ const MeetingDetails = () => {
   });
 
   // Team and Slack integration state
-  const [teamData, setTeamData] = useState<any>(null);
-  const [slackIntegration, setSlackIntegration] = useState<any>(null);
+  const [teamData, setTeamData] = useState<Team | null>(null);
+  const [slackIntegration, setSlackIntegration] = useState<SlackIntegration | null>(null);
 
   const meetingId = searchParams.get("id");
   
@@ -262,7 +262,7 @@ const MeetingDetails = () => {
           if (teamDoc.exists()) {
             const teamInfo = { id: teamDoc.id, ...teamDoc.data() };
             setTeamData(teamInfo);
-            setSlackIntegration((teamInfo as any).slackIntegration || null);
+            setSlackIntegration((teamInfo as Record<string, unknown>).slackIntegration as SlackIntegration || null);
             
             // Load team members for action items
             try {
@@ -314,14 +314,14 @@ const MeetingDetails = () => {
     }
   };
   
-  const formatDate = (timestamp?: any) => {
+  const formatDate = (timestamp?: { toDate?: () => Date } | Date | string | number) => {
     if (!timestamp) return "";
     
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return format(date, "PPP");
   };
   
-  const formatCommentDate = (timestamp: any) => {
+  const formatCommentDate = (timestamp: { toDate?: () => Date } | Date | string | number) => {
     if (!timestamp) return "";
     
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -329,7 +329,7 @@ const MeetingDetails = () => {
   };
 
   // Add a safe date formatting function for action items
-  const formatActionItemDate = (timestamp: any) => {
+  const formatActionItemDate = (timestamp: { toDate?: () => Date } | Date | string | number) => {
     if (!timestamp) return "";
     
     try {

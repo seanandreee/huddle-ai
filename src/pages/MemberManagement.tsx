@@ -138,8 +138,8 @@ const MemberManagement = () => {
   }, [currentUser, navigate, toast]);
   
   const filteredMembers = teamMembers.filter(member =>
-    member.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    member.email.toLowerCase().includes(searchTerm.toLowerCase())
+    (member.displayName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (member.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
   
   const getMemberStatus = (member: TeamMember) => {
@@ -180,14 +180,14 @@ const MemberManagement = () => {
     }
   };
   
-  const formatDate = (timestamp: any) => {
+  const formatDate = (timestamp: { toDate?: () => Date } | Date | string | number) => {
     if (!timestamp) return "N/A";
     
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleDateString();
   };
   
-  const formatRelativeTime = (timestamp: any) => {
+  const formatRelativeTime = (timestamp: { toDate?: () => Date } | Date | string | number) => {
     if (!timestamp) return "Never";
     
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);

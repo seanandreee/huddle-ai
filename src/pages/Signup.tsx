@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { MessageSquare } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { getUserOnboardingStatus } from "@/lib/db";
+import { getUserOnboardingStatus, setOnboardingComplete } from "@/lib/db";
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -52,19 +52,21 @@ const Signup = () => {
       
       // New users: skip fork if invited, otherwise standard onboarding
       if (inviteToken) {
-        navigate("/team-setup");
+        await setOnboardingComplete(userCredential.user.uid);
+        navigate(`/team-setup?invite=${inviteToken}`);
       } else {
         navigate("/onboarding");
       }
-    } catch (error: any) {
-      console.error("Signup error:", error);
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
+      console.error("Signup error:", err);
       
       let errorMessage = "An error occurred during signup.";
-      if (error.code === "auth/email-already-in-use") {
+      if (err.code === "auth/email-already-in-use") {
         errorMessage = "This email is already in use.";
-      } else if (error.code === "auth/weak-password") {
+      } else if (err.code === "auth/weak-password") {
         errorMessage = "Please choose a stronger password.";
-      } else if (error.code === "auth/invalid-email") {
+      } else if (err.code === "auth/invalid-email") {
         errorMessage = "Please provide a valid email address.";
       }
       
@@ -89,7 +91,8 @@ const Signup = () => {
       toast({ title: "Signed in with Google", description: "Welcome to HuddleAI!" });
       const done = await getUserOnboardingStatus(userCredential.user.uid);
       if (inviteToken) {
-        navigate("/team-setup");
+        if (!done) await setOnboardingComplete(userCredential.user.uid);
+        navigate(`/team-setup?invite=${inviteToken}`);
       } else {
         navigate(done ? "/team" : "/onboarding");
       }
@@ -221,7 +224,7 @@ const Signup = () => {
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
                 Already have an account?{" "}
-                <Link to="/login" className="text-blue-600 hover:underline font-medium">
+                <Link to={inviteToken ? `/login?invite=${inviteToken}` : "/login"} className="text-blue-600 hover:underline font-medium">
                   Sign in
                 </Link>
               </p>

@@ -20,7 +20,7 @@ interface SlackNotificationProps {
   } | null;
   notificationStatus?: {
     sent: boolean;
-    sentAt?: any;
+    sentAt?: { toDate: () => Date };
     sentBy?: string;
   };
   onNotificationSent: () => void;
@@ -58,13 +58,13 @@ export const SlackNotification: React.FC<SlackNotificationProps> = ({
         customMessage: customMessage.trim() || undefined
       });
 
-      const data = result.data as any;
+      const data = result.data as { channelName?: string };
       setSuccess(`Meeting summary sent to #${data.channelName} successfully!`);
       setCustomMessage('');
       setShowCustomMessage(false);
       onNotificationSent();
-    } catch (err: any) {
-      setError(err.message || 'Failed to send meeting to Slack');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to send meeting to Slack');
     } finally {
       setIsLoading(false);
     }

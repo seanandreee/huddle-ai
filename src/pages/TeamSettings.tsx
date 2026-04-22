@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MessageSquare, ArrowLeft, Settings, Trash2, Search, MoreVertical, Crown, Shield, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/lib/WorkspaceContext";
 import { deleteTeamAndMeetings } from "@/lib/meetings";
@@ -42,7 +43,8 @@ import {
   updateUserRole,
   removeTeamMember,
   transferTeamOwnership,
-  updateTeam
+  updateTeam,
+  SlackIntegration as SlackIntegrationType
 } from "@/lib/db";
 
 const TeamSettings = () => {
@@ -57,11 +59,12 @@ const TeamSettings = () => {
     name: "",
     description: "",
   });
-  const [slackIntegration, setSlackIntegration] = useState<any>(null);
+  const [slackIntegration, setSlackIntegration] = useState<SlackIntegrationType | null>(null);
   
   // Member management state
   const [searchTerm, setSearchTerm] = useState("");
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   
@@ -290,8 +293,8 @@ const TeamSettings = () => {
   };
 
   const filteredMembers = teamMembers.filter(member =>
-    member.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    member.email.toLowerCase().includes(searchTerm.toLowerCase())
+    (member.displayName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (member.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (isLoading) {

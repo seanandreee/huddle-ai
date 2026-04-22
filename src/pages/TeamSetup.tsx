@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,9 @@ const TeamSetup = () => {
   const { currentUser, isLoading, logout } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [step, setStep] = useState<'options' | 'create-team' | 'join-team'>('options');
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite');
+  const [step, setStep] = useState<'options' | 'create-team' | 'join-team'>(inviteToken ? 'join-team' : 'options');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 

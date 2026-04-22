@@ -26,13 +26,13 @@ const ForgotPassword = () => {
         title: "Reset email sent",
         description: "Check your inbox for password reset instructions."
       });
-    } catch (error: any) {
-      console.error("Password reset error:", error);
+    } catch (error: unknown) {
+      const err = error as { code?: string };
       
       let errorMessage = "An error occurred while sending reset email.";
-      if (error.code === "auth/user-not-found") {
+      if (err.code === "auth/user-not-found") {
         errorMessage = "No account found with this email address.";
-      } else if (error.code === "auth/invalid-email") {
+      } else if (err.code === "auth/invalid-email") {
         errorMessage = "Please provide a valid email address.";
       }
       

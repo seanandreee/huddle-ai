@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { User, Users, ArrowRight, CheckCircle } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,7 +20,19 @@ const OnboardingFork = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get("invite");
   const [isLoading, setIsLoading] = useState<"solo" | "team" | null>(null);
+
+  useEffect(() => {
+    if (inviteToken) {
+      navigate(`/team-setup?invite=${inviteToken}`);
+    }
+  }, [inviteToken, navigate]);
+
+  if (inviteToken) {
+    return null;
+  }
 
   const handleSolo = async () => {
     if (!currentUser) return;
