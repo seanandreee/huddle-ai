@@ -823,6 +823,22 @@ export const createTeamInvite = async (
   }
 };
 
+// Get a single invite by its document ID (used when resolving ?invite=TOKEN links)
+export const getInviteByToken = async (token: string): Promise<TeamInvite | null> => {
+  try {
+    const inviteRef = doc(db, 'teamInvites', token);
+    const inviteDoc = await getDoc(inviteRef);
+
+    if (!inviteDoc.exists()) return null;
+
+    const invite = { id: inviteDoc.id, ...inviteDoc.data() } as TeamInvite;
+    return invite.status === 'pending' ? invite : null;
+  } catch (error) {
+    console.error("Error getting invite by token:", error);
+    throw error;
+  }
+};
+
 // Get invites for a user by email
 export const getInvitesByEmail = async (email: string) => {
   try {

@@ -11,7 +11,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   createTeam, 
-  getInvitesByEmail, 
+  getInvitesByEmail,
+  getInviteByToken,
   acceptTeamInvite, 
   declineTeamInvite, 
   TeamInvite,
@@ -52,28 +53,39 @@ const TeamSetup = () => {
 
   useEffect(() => {
     const loadInvites = async () => {
-      if (currentUser?.email) {
-        setIsLoadingInvites(true);
-        try {
-          const userInvites = await getInvitesByEmail(currentUser.email);
-          setInvites(userInvites);
-        } catch (error) {
-          console.error("Error loading invites:", error);
-          toast({
-            variant: "destructive",
-            title: "Failed to load invites",
-            description: "There was an error loading your team invites."
-          });
-        } finally {
-          setIsLoadingInvites(false);
+      if (!currentUser?.email) return;
+
+      setIsLoadingInvites(true);
+      try {
+        const emailInvites = await getInvitesByEmail(currentUser.email);
+
+        if (inviteToken) {
+          const alreadyIncluded = emailInvites.some(inv => inv.id === inviteToken);
+          if (!alreadyIncluded) {
+            const tokenInvite = await getInviteByToken(inviteToken);
+            if (tokenInvite) {
+              emailInvites.unshift(tokenInvite);
+            }
+          }
         }
+
+        setInvites(emailInvites);
+      } catch (error) {
+        console.error("Error loading invites:", error);
+        toast({
+          variant: "destructive",
+          title: "Failed to load invites",
+          description: "There was an error loading your team invites."
+        });
+      } finally {
+        setIsLoadingInvites(false);
       }
     };
 
     if (step === 'join-team') {
       loadInvites();
     }
-  }, [currentUser, step, toast]);
+  }, [currentUser, step, toast, inviteToken]);
 
   const handleCreateTeam = async () => {
     if (!teamName.trim()) {

@@ -441,7 +441,7 @@ const MemberManagement = () => {
                         <AvatarFallback>
                           {member.displayName
                             ? member.displayName.split(' ').map(n => n[0]).join('').toUpperCase()
-                            : member.email.substring(0, 2).toUpperCase()}
+                            : (member.email || '?').substring(0, 2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div>
@@ -547,7 +547,7 @@ const MemberManagement = () => {
                     <div className="flex items-center space-x-4">
                       <Avatar>
                         <AvatarFallback>
-                          {invite.invitedEmail.substring(0, 2).toUpperCase()}
+                          {(invite.invitedEmail || '?').substring(0, 2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div>
@@ -637,7 +637,7 @@ const MemberManagement = () => {
                 <AvatarFallback>
                   {selectedMember.displayName
                     ? selectedMember.displayName.split(' ').map(n => n[0]).join('').toUpperCase()
-                    : selectedMember.email.substring(0, 2).toUpperCase()}
+                    : (selectedMember.email || '?').substring(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div>
