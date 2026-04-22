@@ -66,22 +66,31 @@ service cloud.firestore {
 
     // ── Meetings ──────────────────────────────────────────────────────────────
     match /meetings/{meetingId} {
-      // Only team members of the meeting's team can read
-      allow read: if isSignedIn() &&
-        isTeamMember(resource.data.teamId);
+      // Allow read if user is a team member OR if it's their personal meeting
+      allow read: if isSignedIn() && (
+        (resource.data.teamId != null && isTeamMember(resource.data.teamId)) ||
+        (resource.data.workspaceType == 'personal' && resource.data.uploadedBy == request.auth.uid) ||
+        (resource.data.teamId == null && resource.data.uploadedBy == request.auth.uid)
+      );
 
-      // Any authenticated team member can create a meeting
-      allow create: if isSignedIn() &&
-        isTeamMember(request.resource.data.teamId);
+      // Allow create if uploading to a team they belong to, OR uploading personal meeting
+      allow create: if isSignedIn() && (
+        (request.resource.data.teamId != null && isTeamMember(request.resource.data.teamId)) ||
+        (request.resource.data.workspaceType == 'personal' && request.resource.data.uploadedBy == request.auth.uid) ||
+        (request.resource.data.teamId == null && request.resource.data.uploadedBy == request.auth.uid)
+      );
 
-      // Team members can update meetings (edit title, add comments, etc.)
-      allow update: if isSignedIn() &&
-        isTeamMember(resource.data.teamId);
+      // Allow update if team member OR personal meeting
+      allow update: if isSignedIn() && (
+        (resource.data.teamId != null && isTeamMember(resource.data.teamId)) ||
+        (resource.data.workspaceType == 'personal' && resource.data.uploadedBy == request.auth.uid) ||
+        (resource.data.teamId == null && resource.data.uploadedBy == request.auth.uid)
+      );
 
       // Only the uploader or team owner can delete
       allow delete: if isSignedIn() && (
         request.auth.uid == resource.data.uploadedBy ||
-        isTeamOwner(resource.data.teamId)
+        (resource.data.teamId != null && isTeamOwner(resource.data.teamId))
       );
     }
 
