@@ -6,7 +6,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { createTeamInvite } from "@/lib/db";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Copy, Check } from "lucide-react";
 
 interface TeamInviteFormProps {
   teamId: string;
@@ -17,6 +17,8 @@ interface TeamInviteFormProps {
 const TeamInviteForm = ({ teamId, teamName, onInviteSent }: TeamInviteFormProps) => {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [generatedLink, setGeneratedLink] = useState("");
+  const [copied, setCopied] = useState(false);
   const { toast } = useToast();
   const { currentUser } = useAuth();
 
@@ -35,7 +37,7 @@ const TeamInviteForm = ({ teamId, teamName, onInviteSent }: TeamInviteFormProps)
     setIsSubmitting(true);
     
     try {
-      await createTeamInvite(
+      const inviteId = await createTeamInvite(
         teamId,
         teamName,
         currentUser?.uid as string,
@@ -43,6 +45,9 @@ const TeamInviteForm = ({ teamId, teamName, onInviteSent }: TeamInviteFormProps)
         email
       );
       
+      const link = `${window.location.origin}/signup?invite=${inviteId}`;
+      setGeneratedLink(link);
+
       toast({
         title: "Invite sent",
         description: `Invitation sent to ${email}`
@@ -63,6 +68,16 @@ const TeamInviteForm = ({ teamId, teamName, onInviteSent }: TeamInviteFormProps)
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(generatedLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast({
+      title: "Link copied",
+      description: "Invite link copied to clipboard."
+    });
   };
   
   return (
@@ -90,13 +105,26 @@ const TeamInviteForm = ({ teamId, teamName, onInviteSent }: TeamInviteFormProps)
               required
             />
           </div>
+
+          {generatedLink && (
+            <div className="mt-4 space-y-2">
+              <Label>Invite Link</Label>
+              <div className="flex gap-2">
+                <Input readOnly value={generatedLink} className="bg-gray-50 flex-1" />
+                <Button type="button" variant="outline" size="icon" onClick={copyToClipboard}>
+                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500">Copy this link and share it directly with your teammate.</p>
+            </div>
+          )}
         </CardContent>
         <CardFooter className="flex justify-end">
           <Button 
             type="submit" 
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Sending..." : "Send Invite"}
+            {isSubmitting ? "Sending..." : "Create Invite"}
           </Button>
         </CardFooter>
       </form>

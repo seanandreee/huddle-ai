@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,8 @@ const Signup = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite');
   const { signUp, updateUserProfile, signInWithGoogle } = useAuth();
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -48,8 +50,12 @@ const Signup = () => {
         description: "You've been signed up successfully."
       });
       
-      // New users always go to /onboarding — flag is always false on fresh account
-      navigate("/onboarding");
+      // New users: skip fork if invited, otherwise standard onboarding
+      if (inviteToken) {
+        navigate("/team-setup");
+      } else {
+        navigate("/onboarding");
+      }
     } catch (error: any) {
       console.error("Signup error:", error);
       
@@ -81,9 +87,12 @@ const Signup = () => {
     try {
       const userCredential = await signInWithGoogle();
       toast({ title: "Signed in with Google", description: "Welcome to HuddleAI!" });
-      // Check onboarding flag: new users → /onboarding, returning users → /team
       const done = await getUserOnboardingStatus(userCredential.user.uid);
-      navigate(done ? "/team" : "/onboarding");
+      if (inviteToken) {
+        navigate("/team-setup");
+      } else {
+        navigate(done ? "/team" : "/onboarding");
+      }
     } catch (error) {
       console.error("Google sign-in error:", error);
       toast({

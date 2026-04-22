@@ -21,7 +21,8 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { db, storage } from './firebase';
 import { auth } from './firebase';
-import { Meeting, UserProfile, getUserById } from './db';
+import { Meeting, UserProfile, getUserById, Team } from './db';
+import { deleteDoc, writeBatch } from 'firebase/firestore';
 
 export interface MeetingUploadData {
   title: string;
@@ -488,6 +489,84 @@ export const deleteComment = async (meetingId: string, commentId: string): Promi
     return true;
   } catch (error) {
     console.error("Error deleting comment:", error);
+    throw error;
+  }
+};
+
+/**
+ * Sprint 2D: Delete Team and either move or delete meetings
+ */
+export const deleteTeamAndMeetings = async (
+  userId: string,
+  teamId: string,
+  action: 'move' | 'delete'
+): Promise<void> => {
+  try {
+    const teamRef = doc(db, 'teams', teamId);
+    const teamSnap = await getDoc(teamRef);
+    if (!teamSnap.exists()) {
+      throw new Error("Team not found");
+    }
+
+    const teamData = teamSnap.data() as Team;
+    if (teamData.ownerId !== userId || teamData.members.length > 1) {
+      throw new Error("Only the sole owner can delete a team.");
+    }
+
+    // Handle meetings
+    const q = query(
+      collection(db, 'meetings'),
+      where('workspaceId', '==', teamId)
+    );
+    const meetingsSnap = await getDocs(q);
+
+    if (action === 'delete') {
+      for (const d of meetingsSnap.docs) {
+        await deleteMeeting(d.id);
+      }
+    } else if (action === 'move') {
+      const batch = writeBatch(db);
+      meetingsSnap.docs.forEach((d) => {
+        batch.update(d.ref, {
+          workspaceType: 'personal',
+          workspaceId: null,
+          teamId: null // Legacy override to ensure dashboard doesn't re-pick it up natively
+        });
+      });
+      await batch.commit();
+    }
+
+    // Delete team Doc
+    await deleteDoc(teamRef);
+
+    // Remove team from userTeams doc
+    const userTeamsRef = doc(db, 'userTeams', userId);
+    const utSnap = await getDoc(userTeamsRef);
+    if (utSnap.exists()) {
+      const utData = utSnap.data();
+      const updatedTeams = utData.teams.filter((t: string) => t !== teamId);
+      const newCurrent = utData.currentTeam === teamId ? (updatedTeams[0] || null) : utData.currentTeam;
+      
+      await updateDoc(userTeamsRef, {
+        teams: updatedTeams,
+        currentTeam: newCurrent
+      });
+    }
+
+    // Clear user role references for this team
+    const userRef = doc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+      const uData = userSnap.data();
+      if (uData.teamRoles && uData.teamRoles[teamId]) {
+        const tr = { ...uData.teamRoles };
+        delete tr[teamId];
+        await updateDoc(userRef, { teamRoles: tr });
+      }
+    }
+
+  } catch (error) {
+    console.error("Error executing team deletion:", error);
     throw error;
   }
 }; 

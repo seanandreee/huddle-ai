@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { MessageSquare, ArrowLeft, Settings, Trash2, Search, MoreVertical, Crown, Shield, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/lib/WorkspaceContext";
+import { deleteTeamAndMeetings } from "@/lib/meetings";
 import { SlackIntegration } from "@/components/SlackIntegration";
 import {
   Dialog,
@@ -66,10 +67,11 @@ const TeamSettings = () => {
   
   // Dialog states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
-  const [confirmationAction, setConfirmationAction] = useState<'remove' | 'transfer' | null>(null);
+  const [confirmationAction, setConfirmationAction] = useState<'remove' | 'transfer' | 'leaveTeam' | 'deleteTeam' | null>(null);
+  const [deleteMeetingPref, setDeleteMeetingPref] = useState<'move' | 'delete'>('move');
   const [newRoleValue, setNewRoleValue] = useState<string>("");
+  const { setActiveWorkspace, activeWorkspace } = useWorkspace();
   
   useEffect(() => {
     const loadTeamData = async () => {
@@ -81,24 +83,22 @@ const TeamSettings = () => {
       try {
         setIsLoading(true);
         
-        // Get user's current team
-        const userTeams = await getUserTeams(currentUser.uid);
-        
-        if (!userTeams.currentTeam) {
-          navigate("/team-setup");
+        if (activeWorkspace.type === 'personal') {
+          navigate("/team");
           return;
         }
-        
-        setTeamId(userTeams.currentTeam);
+
+        if (!activeWorkspace.id) return;
+        setTeamId(activeWorkspace.id);
         
         // Load team info
-        const team = await getTeamById(userTeams.currentTeam);
+        const team = await getTeamById(activeWorkspace.id);
         
         if (!team) {
           toast({
             variant: "destructive",
             title: "Team not found",
-            description: "We couldn't find your team. Please try again."
+            subtitle: "We couldn't find your team. Please try again."
           });
           navigate("/team");
           return;
@@ -262,6 +262,30 @@ const TeamSettings = () => {
       setSelectedMember(null);
       setConfirmationDialogOpen(false);
       setConfirmationAction(null);
+    }
+  };
+
+  const handleLeaveTeam = async () => {
+    if (!teamId || !currentUser) return;
+    try {
+      await removeTeamMember(currentUser.uid, teamId);
+      toast({ title: "Left team", description: "You have successfully left the team." });
+      setActiveWorkspace({ type: 'personal', id: null, name: 'Personal' });
+      navigate("/team");
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error leaving team" });
+    }
+  };
+
+  const handleDeleteTeam = async () => {
+    if (!teamId || !currentUser) return;
+    try {
+      await deleteTeamAndMeetings(currentUser.uid, teamId, deleteMeetingPref);
+      toast({ title: "Team deleted", description: "Team successfully deleted." });
+      setActiveWorkspace({ type: 'personal', id: null, name: 'Personal' });
+      navigate("/team");
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error deleting team", description: error instanceof Error ? error.message : "Unknown error" });
     }
   };
 
@@ -440,6 +464,48 @@ const TeamSettings = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Danger Zone */}
+          <div className="mt-8 border-t pt-8 border-red-100">
+            <h3 className="text-xl font-bold text-red-600 mb-4">Danger Zone</h3>
+            
+            {isOwner && teamMembers.length === 1 ? (
+              <Card className="border border-red-200 shadow-sm bg-red-50/30">
+                <CardHeader>
+                  <CardTitle className="text-red-700 text-lg">Delete Team</CardTitle>
+                  <CardDescription className="text-red-600/80">
+                    Permanently delete this team. You can choose to move your meetings to your personal workspace or delete them entirely.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="destructive" onClick={() => {
+                    setConfirmationAction('deleteTeam');
+                    setConfirmationDialogOpen(true);
+                  }}>
+                    Delete Team
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border border-red-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-red-600 text-lg">Leave Team</CardTitle>
+                  <CardDescription>
+                    Leave this team and lose access to its meetings. 
+                    {isOwner ? ' You cannot leave because you are the team owner. Transfer ownership first.' : ''}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="destructive" disabled={isOwner} onClick={() => {
+                    setConfirmationAction('leaveTeam');
+                    setConfirmationDialogOpen(true);
+                  }}>
+                    Leave Team
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
       </div>
 
@@ -498,15 +564,53 @@ const TeamSettings = () => {
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>
-              {confirmationAction === 'remove' ? 'Remove Team Member' : 'Transfer Ownership'}
+              {confirmationAction === 'remove' ? 'Remove Team Member' : 
+               confirmationAction === 'transfer' ? 'Transfer Ownership' : 
+               confirmationAction === 'deleteTeam' ? 'Delete Team' : 'Leave Team'}
             </DialogTitle>
             <DialogDescription>
-              {confirmationAction === 'remove' 
-                ? 'Are you sure you want to remove this member from the team? This action cannot be undone.'
-                : 'Are you sure you want to transfer team ownership to this member? You will no longer be the team owner.'}
+              {confirmationAction === 'remove' && 'Are you sure you want to remove this member from the team?'}
+              {confirmationAction === 'transfer' && 'Are you sure you want to transfer ownership? You will no longer be the owner.'}
+              {confirmationAction === 'leaveTeam' && 'Are you sure you want to leave this team? You will lose access to all team meetings.'}
+              {confirmationAction === 'deleteTeam' && 'Are you sure you want to delete this team? Choose what should happen to its meetings:'}
             </DialogDescription>
           </DialogHeader>
-          {selectedMember && (
+
+          {confirmationAction === 'deleteTeam' && (
+            <div className="py-4 space-y-4">
+              <div 
+                className={`p-3 border rounded-lg cursor-pointer ${deleteMeetingPref === 'move' ? 'border-blue-500 bg-blue-50/50' : 'border-gray-200 hover:bg-gray-50'}`}
+                onClick={() => setDeleteMeetingPref('move')}
+              >
+                <div className="flex items-center space-x-2">
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${deleteMeetingPref === 'move' ? 'border-blue-500' : 'border-gray-300'}`}>
+                    {deleteMeetingPref === 'move' && <div className="w-2 h-2 bg-blue-500 rounded-full" />}
+                  </div>
+                  <span className="font-medium text-sm text-gray-900">Move meetings to Personal Workspace</span>
+                </div>
+                <p className="pl-6 text-sm text-gray-500 mt-1">
+                  Keep all meetings you uploaded with this team by migrating them to your personal dashboard.
+                </p>
+              </div>
+
+              <div 
+                className={`p-3 border rounded-lg cursor-pointer ${deleteMeetingPref === 'delete' ? 'border-red-500 bg-red-50/50' : 'border-gray-200 hover:bg-gray-50'}`}
+                onClick={() => setDeleteMeetingPref('delete')}
+              >
+                <div className="flex items-center space-x-2">
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${deleteMeetingPref === 'delete' ? 'border-red-500' : 'border-gray-300'}`}>
+                    {deleteMeetingPref === 'delete' && <div className="w-2 h-2 bg-red-500 rounded-full" />}
+                  </div>
+                  <span className="font-medium text-sm text-red-600">Delete meetings permanently</span>
+                </div>
+                <p className="pl-6 text-sm text-gray-500 mt-1">
+                  Permanently wipe all meetings attached to this team. This cannot be reversed.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {selectedMember && (confirmationAction === 'remove' || confirmationAction === 'transfer') && (
             <div className="py-4 flex items-center space-x-4">
               <Avatar>
                 <AvatarImage src={selectedMember.photoURL || ''} />
@@ -531,10 +635,16 @@ const TeamSettings = () => {
               Cancel
             </Button>
             <Button 
-              variant={confirmationAction === 'remove' ? 'destructive' : 'default'}
-              onClick={confirmationAction === 'remove' ? handleRemoveMember : handleTransferOwnership}
+              variant={confirmationAction === 'remove' || confirmationAction === 'leaveTeam' || confirmationAction === 'deleteTeam' ? 'destructive' : 'default'}
+              onClick={
+                confirmationAction === 'remove' ? handleRemoveMember : 
+                confirmationAction === 'transfer' ? handleTransferOwnership : 
+                confirmationAction === 'deleteTeam' ? handleDeleteTeam : handleLeaveTeam
+              }
             >
-              {confirmationAction === 'remove' ? 'Remove Member' : 'Transfer Ownership'}
+              {confirmationAction === 'remove' ? 'Remove' : 
+               confirmationAction === 'transfer' ? 'Transfer' : 
+               confirmationAction === 'deleteTeam' ? 'Delete Team' : 'Leave Team'}
             </Button>
           </DialogFooter>
         </DialogContent>
