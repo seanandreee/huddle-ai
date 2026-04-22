@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/lib/AuthContext";
+import { WorkspaceProvider } from "@/lib/WorkspaceContext";
 import { useAuth } from "@/hooks/useAuth";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import Index from "./pages/Index";
@@ -45,83 +46,85 @@ const App = () => (
   <ErrorBoundary>
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/onboarding" element={
-              <ProtectedRoute>
-                <OnboardingFork />
-              </ProtectedRoute>
-            } />
-            {/* /team is the canonical dashboard route.
-                /dashboard is an alias so PRD/doc links resolve correctly. */}
-            <Route path="/dashboard" element={<Navigate to="/team" replace />} />
-            <Route path="/team-setup" element={
-              <ProtectedRoute>
-                <TeamSetup />
-              </ProtectedRoute>
-            } />
-            <Route path="/profile" element={
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            } />
-            <Route path="/team" element={
-              <ProtectedRoute>
-                <Team />
-              </ProtectedRoute>
-            } />
-            <Route path="/meeting-upload" element={
-              <ProtectedRoute>
-                <MeetingUpload />
-              </ProtectedRoute>
-            } />
-            <Route path="/meeting-details" element={
-              <ProtectedRoute>
-                <MeetingDetails />
-              </ProtectedRoute>
-            } />
-            <Route path="/invite-members" element={
-              <ProtectedRoute>
-                <InviteMembers />
-              </ProtectedRoute>
-            } />
-            <Route path="/integrations" element={
-              <ProtectedRoute>
-                <Integrations />
-              </ProtectedRoute>
-            } />
-            <Route path="/team-settings" element={
-              <ProtectedRoute>
-                <TeamSettings />
-              </ProtectedRoute>
-            } />
-            <Route path="/member-management" element={
-              <ProtectedRoute>
-                <MemberManagement />
-              </ProtectedRoute>
-            } />
-            <Route path="/meeting-management" element={
-              <ProtectedRoute>
-                <MeetingManagement />
-              </ProtectedRoute>
-            } />
-            <Route path="/action-items" element={
-              <ProtectedRoute>
-                <ActionItems />
-              </ProtectedRoute>
-            } />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+      <WorkspaceProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/onboarding" element={
+                <ProtectedRoute>
+                  <OnboardingFork />
+                </ProtectedRoute>
+              } />
+              {/* /team is the canonical dashboard route.
+                  /dashboard is an alias so PRD/doc links resolve correctly. */}
+              <Route path="/dashboard" element={<Navigate to="/team" replace />} />
+              <Route path="/team-setup" element={
+                <ProtectedRoute>
+                  <TeamSetup />
+                </ProtectedRoute>
+              } />
+              <Route path="/profile" element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              } />
+              <Route path="/team" element={
+                <ProtectedRoute>
+                  <Team />
+                </ProtectedRoute>
+              } />
+              <Route path="/meeting-upload" element={
+                <ProtectedRoute>
+                  <MeetingUpload />
+                </ProtectedRoute>
+              } />
+              <Route path="/meeting-details" element={
+                <ProtectedRoute>
+                  <MeetingDetails />
+                </ProtectedRoute>
+              } />
+              <Route path="/invite-members" element={
+                <ProtectedRoute>
+                  <InviteMembers />
+                </ProtectedRoute>
+              } />
+              <Route path="/integrations" element={
+                <ProtectedRoute>
+                  <Integrations />
+                </ProtectedRoute>
+              } />
+              <Route path="/team-settings" element={
+                <ProtectedRoute>
+                  <TeamSettings />
+                </ProtectedRoute>
+              } />
+              <Route path="/member-management" element={
+                <ProtectedRoute>
+                  <MemberManagement />
+                </ProtectedRoute>
+              } />
+              <Route path="/meeting-management" element={
+                <ProtectedRoute>
+                  <MeetingManagement />
+                </ProtectedRoute>
+              } />
+              <Route path="/action-items" element={
+                <ProtectedRoute>
+                  <ActionItems />
+                </ProtectedRoute>
+              } />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </WorkspaceProvider>
     </AuthProvider>
   </QueryClientProvider>
   </ErrorBoundary>

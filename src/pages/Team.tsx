@@ -20,23 +20,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import { 
-  getUserTeams, 
   getTeamById, 
   Team as TeamType, 
   getUsersByIds, 
   UserProfile,
-  getRecentMeetingsForTeam,
   Meeting,
   getTeamMeetingStats,
   ensureUserProfileExists,
-  getMeetingsByUser
+  getMeetingsByWorkspace
 } from "@/lib/db";
 import { resolveUserStage, UserStage } from "@/lib/userStage";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useWorkspace } from "@/lib/WorkspaceContext";
+import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 
 const Team = () => {
   const { currentUser, logout } = useAuth();
+  const { activeWorkspace } = useWorkspace();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -63,98 +64,89 @@ const Team = () => {
   const [isLoadingStage, setIsLoadingStage] = useState(true);
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadDashboardData = async () => {
       if (!currentUser) return;
-      await checkTeamMembership();
-    };
-    
-    loadData();
-  }, [currentUser]);
-
-  const checkTeamMembership = async () => {
-    if (!currentUser) return;
-    
-    try {
-      setIsLoadingTeam(true);
-      console.log("Checking team membership for user:", currentUser.uid);
       
-      // Ensure current user has a profile
-      if (currentUser.displayName && currentUser.email) {
-        await ensureUserProfileExists(
-          currentUser.uid,
-          currentUser.displayName,
-          currentUser.email,
-          currentUser.photoURL || undefined
-        );
-      }
-      
-      const userTeams = await getUserTeams(currentUser.uid);
-      
-      if (!userTeams.currentTeam) {
-        // Solo user — resolve stage (EMPTY vs ACTIVE) then stop loading
-        const stageResult = await resolveUserStage(currentUser.uid, null);
+      try {
+        setIsLoadingTeam(true);
+        
+        // Ensure current user has a profile
+        if (currentUser.displayName && currentUser.email) {
+          await ensureUserProfileExists(
+            currentUser.uid,
+            currentUser.displayName,
+            currentUser.email,
+            currentUser.photoURL || undefined
+          );
+        }
+        
+        // Resolve overall user stage (controls layout/paywall states)
+        const stageResult = await resolveUserStage(currentUser.uid, activeWorkspace);
         setUserStage(stageResult.stage);
-        setSoloMeetings(stageResult.soloMeetings);
-        setIsLoadingTeam(false);
-        setIsLoadingMembers(false);
-        setIsLoadingMeetings(false);
-        setIsLoadingStats(false);
-        setIsLoadingStage(false);
-        return;
-      }
-      
-      console.log("Loading team:", userTeams.currentTeam);
-      // Load current team data
-      const currentTeam = await getTeamById(userTeams.currentTeam);
-      if (currentTeam) {
-        console.log("Team loaded:", currentTeam.name, "with members:", currentTeam.members);
-        setTeam(currentTeam);
         
-        // Load team members
-        await loadTeamMembers(currentTeam.members);
+        if (activeWorkspace.type === "personal") {
+          setSoloMeetings(stageResult.soloMeetings);
+          setTeam(null);
+          setTeamMembers([]);
+          setTeamData(null);
+          setSlackIntegration(null);
+          setRecentMeetings([]);
+          
+          setIsLoadingTeam(false);
+          setIsLoadingMembers(false);
+          setIsLoadingMeetings(false);
+          setIsLoadingStats(false);
+          setIsLoadingStage(false);
+          return;
+        }
         
-        // Load recent meetings
-        await loadRecentMeetings(currentTeam.id);
-        
-        // Load meeting stats
-        await loadMeetingStats(currentTeam.id);
+        // Team workspace
+        if (activeWorkspace.id) {
+          const currentTeam = await getTeamById(activeWorkspace.id);
+          if (currentTeam) {
+            setTeam(currentTeam);
+            await loadTeamMembers(currentTeam.members);
+            await loadRecentMeetings(currentTeam.id);
+            await loadMeetingStats(currentTeam.id);
 
-        // Fetch team data
-        if (currentTeam) {
-          try {
-            const teamRef = doc(db, "teams", currentTeam.id);
-            const teamDoc = await getDoc(teamRef);
-            
-            if (teamDoc.exists()) {
-              const teamInfo = teamDoc.data();
-              setTeamData(teamInfo);
-              setSlackIntegration(teamInfo.slackIntegration || null);
+            // Fetch team data (for integrations)
+            try {
+              const teamRef = doc(db, "teams", currentTeam.id);
+              const teamDoc = await getDoc(teamRef);
+              if (teamDoc.exists()) {
+                const teamInfo = teamDoc.data();
+                setTeamData(teamInfo);
+                setSlackIntegration(teamInfo.slackIntegration || null);
+              }
+            } catch (error) {
+              console.error("Error fetching team data:", error);
             }
-          } catch (error) {
-            console.error("Error fetching team data:", error);
+          } else {
+            console.log("Team not found");
+            toast({
+              variant: "destructive",
+              title: "Team not found",
+              description: "We couldn't find your active team."
+            });
+            navigate("/team-setup");
           }
         }
-      } else {
-        // Team not found
-        console.log("Team not found");
+      } catch (error) {
+        console.error("Error loading dashboard data:", error);
         toast({
           variant: "destructive",
-          title: "Team not found",
-          description: "We couldn't find your team. Please create or join a team."
+          title: "Error loading workspace",
+          description: "There was a problem accessing your workspace information."
         });
-        navigate("/team-setup");
+      } finally {
+        setIsLoadingTeam(false);
       }
-    } catch (error) {
-      console.error("Error checking team membership:", error);
-      toast({
-        variant: "destructive",
-        title: "Error loading team",
-        description: "There was a problem accessing your team information."
-      });
-    } finally {
-      setIsLoadingTeam(false);
-    }
-  };
+    };
+    
+    loadDashboardData();
+  }, [currentUser, activeWorkspace]);
+
+  // Legacy checkTeamMembership deleted 
   
   const loadTeamMembers = async (memberIds: string[]) => {
     if (!memberIds || memberIds.length === 0) {
@@ -185,7 +177,8 @@ const Team = () => {
   const loadRecentMeetings = async (teamId: string) => {
     try {
       setIsLoadingMeetings(true);
-      const meetings = await getRecentMeetingsForTeam(teamId, 3);
+      if (!currentUser) return;
+      const meetings = await getMeetingsByWorkspace('team', currentUser.uid, teamId, 3);
       setRecentMeetings(meetings);
     } catch (error) {
       console.error("Error loading recent meetings:", error);
@@ -336,12 +329,14 @@ const Team = () => {
   // Shared solo nav (no team actions)
   const SoloNav = () => (
     <nav className="px-6 py-4 flex justify-between items-center border-b bg-white/80 backdrop-blur-sm sticky top-0 z-10">
-      <Link to="/" className="flex items-center space-x-2">
-        <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-          <MessageSquare className="w-5 h-5 text-white" />
-        </div>
-        <span className="text-xl font-bold text-gray-900">HuddleAI</span>
-      </Link>
+      <div className="flex items-center space-x-4">
+        <Link to="/" className="flex items-center space-x-2">
+          <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+            <MessageSquare className="w-5 h-5 text-white" />
+          </div>
+        </Link>
+        <WorkspaceSwitcher />
+      </div>
       <div className="flex items-center gap-3">
         <Link to="/meeting-upload">
           <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
@@ -505,8 +500,8 @@ const Team = () => {
             <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
               <MessageSquare className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-gray-900">HuddleAI</span>
           </Link>
+          <WorkspaceSwitcher />
         </div>
         <div className="flex items-center space-x-4">
           <Link to="/invite-members">

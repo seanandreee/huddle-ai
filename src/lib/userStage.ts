@@ -11,8 +11,9 @@
  *  TEAM_PAID    — has a team, on paid plan (future: check plan field)
  */
 
-import { getMeetingsByUser } from './db';
-import type { Meeting, Team } from './db';
+import { getMeetingsByWorkspace } from './db';
+import type { Meeting } from './db';
+import type { Workspace } from './WorkspaceContext';
 
 export type UserStage = 'SOLO_EMPTY' | 'SOLO_ACTIVE' | 'TEAM_FREE' | 'TEAM_PAID';
 
@@ -27,17 +28,17 @@ export interface UserStageResult {
  */
 export async function resolveUserStage(
   userId: string,
-  team: Team | null
+  workspace: Workspace
 ): Promise<UserStageResult> {
-  // Has a team — determine free vs paid (plan field doesn't exist yet → always FREE)
-  if (team) {
+  // If active workspace is a team, they are in team view
+  if (workspace.type === 'team') {
     // TODO Sprint 3: check team.plan === 'paid' for TEAM_PAID
     return { stage: 'TEAM_FREE', soloMeetings: [] };
   }
 
-  // No team — check for solo meetings
+  // Personal workspace — check for solo meetings
   try {
-    const soloMeetings = await getMeetingsByUser(userId, 5);
+    const soloMeetings = await getMeetingsByWorkspace('personal', userId, null, 5);
     if (soloMeetings.length > 0) {
       return { stage: 'SOLO_ACTIVE', soloMeetings };
     }

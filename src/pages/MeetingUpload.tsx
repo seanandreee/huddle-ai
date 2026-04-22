@@ -8,7 +8,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { getUserTeams, getTeamById } from "@/lib/db";
+import { getTeamById } from "@/lib/db";
+import { useWorkspace } from "@/lib/WorkspaceContext";
 import { uploadMeeting, getTeamMembersForSelect, MeetingUploadData, UploadProgress, pollMeetingStatus } from "@/lib/meetings";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
@@ -38,8 +39,7 @@ const MeetingUpload = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
-  const [teamId, setTeamId] = useState<string | null>(null);
-  const [teamName, setTeamName] = useState<string>("");
+  const { activeWorkspace } = useWorkspace();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
@@ -60,20 +60,15 @@ const MeetingUpload = () => {
       try {
         setIsLoading(true);
         
-        const userTeams = await getUserTeams(currentUser.uid);
-        const currentTeamId = userTeams.currentTeam || null;
-        setTeamId(currentTeamId);
-        
-        if (currentTeamId) {
-          const team = await getTeamById(currentTeamId);
+        if (activeWorkspace.type === 'team' && activeWorkspace.id) {
+          const team = await getTeamById(activeWorkspace.id);
           if (team) {
-            setTeamName(team.name);
-            const members = await getTeamMembersForSelect(currentTeamId);
+            const members = await getTeamMembersForSelect(activeWorkspace.id);
             setTeamMembers(members);
             setSelectedParticipants([currentUser.uid]);
           }
         } else {
-          // Solo user — no team yet, upload will be personal
+          // Personal workspace — no team, upload will be personal
           setSelectedParticipants([currentUser.uid]);
         }
       } catch (error) {
@@ -89,7 +84,7 @@ const MeetingUpload = () => {
     };
     
     loadTeamData();
-  }, [currentUser, navigate, toast]);
+  }, [currentUser, activeWorkspace, navigate, toast]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -136,7 +131,9 @@ const MeetingUpload = () => {
       const data: MeetingUploadData = {
         title: meetingData.title,
         description: meetingData.description,
-        teamId,
+        teamId: activeWorkspace.id, // For backwards compatibility if any old logic still hooks onto it
+        workspaceType: activeWorkspace.type,
+        workspaceId: activeWorkspace.id,
         date: selectedDate,
         participants: selectedParticipants,
         file: meetingData.file
@@ -217,6 +214,18 @@ const MeetingUpload = () => {
       </nav>
 
       <div className="px-6 py-8 max-w-2xl mx-auto">
+        <div className="mb-6 bg-blue-50/50 border border-blue-100 rounded-lg p-4 flex items-start gap-3 text-sm text-blue-800">
+          <AlertCircle className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-medium">Uploading to: {activeWorkspace.name}</span>
+            <p className="text-blue-700/80 mt-1">
+              {activeWorkspace.type === 'team' 
+                ? "All team members will be able to see this meeting and its action items."
+                : "This meeting is private to you. You can share it with a team later."}
+            </p>
+          </div>
+        </div>
+
         {isUploading ? (
           <Card className="border-0 shadow-xl">
             <CardHeader className="text-center">
@@ -336,7 +345,11 @@ const MeetingUpload = () => {
                   <div className="border rounded-md p-4 space-y-4">
                     <div className="text-sm text-gray-500 mb-2 flex items-center space-x-2">
                       <Users className="w-4 h-4" />
-                      <span>Select team members who attended this meeting</span>
+                      <span>
+                        {activeWorkspace.type === 'team' 
+                          ? `Select who attended this meeting from ${activeWorkspace.name}:`
+                          : "This meeting is in your personal workspace. Only you are listed."}
+                      </span>
                     </div>
                     
                     {teamMembers.length > 0 ? (
