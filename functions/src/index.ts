@@ -944,7 +944,7 @@ export const manageSlackIntegration = onCall(
 /**
  * Generate meeting insights using OpenAI
  */
-async function generateMeetingInsights(transcript: string): Promise<MeetingInsights> {
+export async function generateMeetingInsights(transcript: string): Promise<MeetingInsights> {
   try {
     const prompt = `You are an intelligent assistant helping a team organize and summarize their meetings.
 
@@ -1250,3 +1250,7 @@ export const sendMeetingToSlack = onCall(
     }
   }
 );
+
+// --- Google Integrations ---
+export * from "./googleIntegration";
+export * from "./calendarWebhook";

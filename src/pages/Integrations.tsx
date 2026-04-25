@@ -5,15 +5,84 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { MessageSquare, ArrowLeft, Settings, CheckCircle, AlertCircle } from "lucide-react";
-import { Link } from "react-router-dom";
-import { useState } from "react";
+import { MessageSquare, ArrowLeft, Settings, CheckCircle, AlertCircle, Video } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/lib/WorkspaceContext";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { useToast } from "@/components/ui/use-toast";
 
 const Integrations = () => {
+  const { currentUser } = useAuth();
+  const { activeWorkspace } = useWorkspace();
+  const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+
   const [integrations, setIntegrations] = useState({
+    google: { enabled: false, configured: false },
     slack: { enabled: true, configured: true },
     jira: { enabled: false, configured: false }
   });
+
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  // Load Google Integration status
+  useEffect(() => {
+    if (!currentUser) return;
+    const loadGoogleStatus = async () => {
+      const docRef = doc(db, "users", currentUser.uid, "integrations", "google");
+      const snap = await getDoc(docRef);
+      if (snap.exists() && snap.data().status === "connected") {
+        setIntegrations(prev => ({
+          ...prev,
+          google: { enabled: true, configured: true }
+        }));
+      }
+    };
+    loadGoogleStatus();
+
+    if (searchParams.get('google_connected') === 'true') {
+      toast({ title: "Connected", description: "Google Workspace successfully connected for auto-ingest." });
+      // Remove query param to prevent toast re-triggering on refresh
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [currentUser, searchParams, toast]);
+
+  const handleConnectGoogle = async () => {
+    if (integrations.google.configured) {
+      // Disconnect
+      try {
+        setIsGoogleLoading(true);
+        const functions = getFunctions();
+        const disconnect = httpsCallable(functions, 'disconnectGoogleIntegration');
+        await disconnect();
+        setIntegrations(prev => ({
+          ...prev,
+          google: { enabled: false, configured: false }
+        }));
+        toast({ title: "Disconnected", description: "Google Workspace disconnected." });
+      } catch (err) {
+        toast({ title: "Error", description: "Failed to disconnect", variant: "destructive" });
+      } finally {
+        setIsGoogleLoading(false);
+      }
+    } else {
+      // Connect
+      try {
+        setIsGoogleLoading(true);
+        const functions = getFunctions();
+        const getUrl = httpsCallable<{workspaceId: string}, {url: string}>(functions, 'getGoogleOAuthUrl');
+        const response = await getUrl({ workspaceId: activeWorkspace?.id || 'personal' });
+        window.location.href = response.data.url;
+      } catch (err) {
+        toast({ title: "Error", description: "Failed to get Google Auth URL", variant: "destructive" });
+        setIsGoogleLoading(false);
+      }
+    }
+  };
 
   const [slackConfig, setSlackConfig] = useState({
     webhookUrl: "https://hooks.slack.com/services/...",
@@ -85,6 +154,44 @@ const Integrations = () => {
         </div>
 
         <div className="space-y-6">
+          {/* Google Workspace Integration */}
+          <Card className="border-0 shadow-lg border-l-4 border-l-blue-500">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
+                    <Video className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <CardTitle>Google Workspace</CardTitle>
+                    <CardDescription>Auto-ingest Google Meet recordings and transcripts</CardDescription>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  {integrations.google.configured ? (
+                    <Badge className="bg-green-100 text-green-800">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Connected
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">
+                      <AlertCircle className="w-3 h-3 mr-1" />
+                      Not Configured
+                    </Badge>
+                  )}
+                  <Button 
+                    variant={integrations.google.configured ? "outline" : "default"}
+                    onClick={handleConnectGoogle}
+                    disabled={isGoogleLoading}
+                    className={!integrations.google.configured ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" : ""}
+                  >
+                    {isGoogleLoading ? "Processing..." : (integrations.google.configured ? "Disconnect" : "Connect Account")}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
           {/* Slack Integration */}
           <Card className="border-0 shadow-lg">
             <CardHeader>
