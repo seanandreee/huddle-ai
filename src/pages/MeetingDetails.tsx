@@ -122,13 +122,9 @@ const MeetingDetails = () => {
       setIsPolling(true);
       setPollingError(null);
       
-      console.log("Starting status polling for meeting:", id);
-      
       const finalStatus = await pollMeetingStatus(
         id,
         async (status) => {
-          console.log("Status update received:", status);
-          
           // Refresh meeting data when status changes
           try {
             const meetingRef = doc(db, "meetings", id);
@@ -153,8 +149,6 @@ const MeetingDetails = () => {
           }
         }
       );
-      
-      console.log("Polling completed with final status:", finalStatus);
       
       if (finalStatus === 'processed') {
         toast({

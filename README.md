@@ -1,159 +1,191 @@
-# HuddleAI - AI-Powered Meeting Assistant
+# HuddleAI — AI-Powered Meeting Scribe
 
-HuddleAI is an intelligent meeting assistant that automatically processes, transcribes, and summarizes your team meetings, making them more productive and actionable.
+HuddleAI is a full-stack web application that turns raw meeting recordings into structured, actionable notes. Teams upload a video or audio file, and the app automatically transcribes it, identifies speakers, generates a plain-English summary, and extracts action items with assignees — all without anyone typing a word.
 
-## 🌟 Key Features
+> **Live demo placeholder** — add a screenshot or GIF here once deployed.
 
-### 🎥 Automatic Meeting Processing
-- Upload meeting recordings (up to 1GB)
-- Automatic audio extraction and processing
-- Speech-to-text conversion with speaker identification
-- AI-powered meeting summarization
-- Action item extraction and tracking
+---
 
-### 📝 Smart Summaries
-- Comprehensive meeting summaries
-- Key topics discussed
-- Action items with assignments
-- Important decisions made
-- Follow-up questions and next steps
+## What It Does
 
-### 🔄 Slack Integration
-- Automatic notifications when meetings are processed
-- Rich message format with meeting details
-- Direct links to full meeting information
-- Customizable notification settings
-- Team-specific channel configuration
+| Step | What happens |
+|------|-------------|
+| **Upload** | Team member drops in a meeting recording (up to 1 GB, any common format) |
+| **Process** | Firebase Cloud Functions extract audio, run Google Cloud Speech-to-Text with speaker diarization, then call GPT-4o-mini to generate a summary |
+| **Review** | Meeting page shows full transcript, key topics, decisions made, and action items with owners |
+| **Notify** | Slack integration posts a formatted summary card to the team channel automatically |
+| **Track** | Action items dashboard aggregates open tasks across all team meetings |
 
-### 👥 Team Collaboration
-- Team-based workspace organization
-- Member management and permissions
-- Shared meeting history
-- Collaborative action item tracking
-- Team-specific settings and integrations
+The app also supports **Google Calendar/Meet integration** — watch for new meeting recordings and ingest them automatically.
 
-## 🚀 Getting Started
+---
 
-### Prerequisites
-- Node.js & npm installed
-- Google Cloud account (for deployment)
-- Firebase account (for hosting)
+## Tech Stack
 
-### Installation
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 18 + TypeScript + Vite |
+| **UI** | Tailwind CSS v3 + shadcn/ui (Radix UI primitives) |
+| **Routing** | React Router v6 |
+| **Backend** | Firebase Cloud Functions (Node.js / TypeScript) |
+| **Database** | Firestore (NoSQL, real-time) |
+| **Auth** | Firebase Authentication (email/password + Google OAuth) |
+| **File Storage** | Firebase Storage |
+| **Transcription** | Google Cloud Speech-to-Text (speaker diarization) |
+| **Summarization** | OpenAI GPT-4o-mini |
+| **Notifications** | Slack API (Webhooks + OAuth) |
+| **Calendar** | Google Calendar API + Pub/Sub webhooks |
 
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd huddleai
+---
+
+## Project Structure
+
+```
+huddleai-team-scribe/
+├── src/
+│   ├── components/       # Shared UI components (Slack, UserProfile, etc.)
+│   ├── pages/            # Route-level page components
+│   ├── hooks/            # Custom React hooks (useMeetings, useActionItems)
+│   ├── lib/              # Firebase client, DB helpers, meeting utilities
+│   └── main.tsx          # App entry point
+├── functions/
+│   └── src/
+│       ├── index.ts          # All Cloud Function definitions
+│       ├── config.ts         # Function configuration
+│       ├── googleIntegration.ts  # Google OAuth + Calendar setup
+│       └── calendarWebhook.ts    # Pub/Sub webhook handler
+├── firestore.rules       # Firestore security rules
+├── storage.rules         # Firebase Storage security rules
+├── firebase.json         # Firebase hosting + functions config
+└── vite.config.ts
 ```
 
-2. Install dependencies:
+---
+
+## Running Locally
+
+### Prerequisites
+
+- Node.js 20+
+- [Firebase CLI](https://firebase.google.com/docs/cli): `npm install -g firebase-tools`
+- A Firebase project with Firestore, Storage, Auth, and Cloud Functions enabled
+- OpenAI API key
+- (Optional) Slack app credentials for notification integration
+
+### 1. Clone and install
+
 ```bash
+git clone <repository-url>
+cd huddleai-team-scribe
 npm install
 ```
 
-3. Set up environment variables:
-Create a `.env` file in the root directory with your Firebase configuration:
-```
+### 2. Set up environment variables
+
+Create a `.env.local` file in the project root (this file is gitignored — never commit it):
+
+```bash
+# Firebase client config — found in Firebase Console → Project Settings → Your Apps
 VITE_FIREBASE_API_KEY=your-api-key
 VITE_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project-id.appspot.com
+VITE_FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
-VITE_FIREBASE_APP_ID=your-app-id
-VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
+VITE_FIREBASE_APP_ID=1:your-sender-id:web:your-app-id
+VITE_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
 ```
 
-4. Start the development server:
+For Cloud Functions, set secrets via Firebase (not plain env vars):
+
+```bash
+firebase functions:secrets:set OPENAI_API_KEY
+firebase functions:secrets:set GOOGLE_CLIENT_ID
+firebase functions:secrets:set GOOGLE_CLIENT_SECRET
+```
+
+### 3. Start the dev server
+
 ```bash
 npm run dev
 ```
 
-## 🛠️ Technical Stack
+The app will be available at `http://localhost:8080`.
 
-- **Frontend**: React, TypeScript, Tailwind CSS, shadcn-ui
-- **Backend**: Firebase Cloud Functions
-- **Database**: Firestore
-- **Storage**: Firebase Storage
-- **Authentication**: Firebase Auth
-- **AI/ML**: Google Cloud Speech-to-Text, OpenAI GPT-4
+### 4. (Optional) Run Cloud Functions locally
 
-## 🔧 Cloud Functions Setup
-
-The application uses Google Cloud Functions for processing meeting recordings. To set up:
-
-1. Enable required APIs in Google Cloud Console:
-   - Cloud Functions API
-   - Speech-to-Text API
-   - Firebase Storage API
-   - Firestore API
-
-2. Deploy functions:
 ```bash
 cd functions
 npm install
-npm run build
-firebase deploy --only functions
+npm run serve        # starts Firebase Functions emulator
 ```
 
-## 📱 Features in Detail
+---
 
-### Meeting Processing
-- Supports video files up to 1GB
-- Automatic audio extraction using FFmpeg
-- Speaker diarization for multiple participants
-- Intelligent summarization using GPT-4
-- Action item extraction and assignment
+## Deploying
 
-### Slack Integration
-- Automatic meeting notifications
-- Rich message formatting
-- Customizable notification settings
-- Team-specific channel configuration
-- Test message functionality
-
-### User Management
-- Email/password authentication
-- Team creation and management
-- Member invitations and permissions
-- Profile management
-- Secure access control
-
-## 🔒 Security
-
-- Firebase Authentication for user management
-- Secure storage of API keys and credentials
-- Role-based access control
-- Secure file uploads and processing
-- Protected API endpoints
-
-## 🚀 Deployment
-
-1. Build the application:
 ```bash
+# Build and deploy everything (hosting + functions)
 npm run build
-```
-
-2. Deploy to Firebase:
-```bash
 firebase deploy
+
+# Deploy only functions
+firebase deploy --only functions
+
+# Deploy only hosting
+firebase deploy --only hosting
 ```
 
-## 📚 Documentation
+---
 
-For detailed documentation on specific features:
-- [Cloud Functions Setup](functions/README.md)
-- [Slack Integration](SLACK_INTEGRATION_README.md)
-- [Firebase Authentication](src/docs/FirebaseAuth.md)
+## Key Features in Depth
 
-## 🤝 Contributing
+### Meeting Processing Pipeline
 
-Contributions are welcome! Please read our contributing guidelines before submitting pull requests.
+1. User uploads a video/audio file to Firebase Storage
+2. A Cloud Function trigger fires on the new file
+3. FFmpeg extracts the audio track as 16kHz mono PCM
+4. Google Cloud Speech-to-Text transcribes with speaker diarization (up to 10 speakers)
+5. GPT-4o-mini receives the transcript and returns structured JSON: summary, key topics, decisions, action items
+6. Results are written to Firestore; the frontend polls for status updates
 
-## 📄 License
+### Team & Workspace Model
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+Each user can belong to multiple **teams**, each with its own meeting history, members, and settings. The **workspace switcher** lets users toggle between personal and team contexts. Invitations are handled via shareable token links.
 
-## 📞 Support
+### Google Calendar Integration
 
-For support, please contact the HuddleAI team or create an issue in the project repository.
+Connect a Google Workspace account to watch a calendar for new events. When a Google Meet recording is available, the webhook auto-ingests it into the processing pipeline.
+
+---
+
+## Security Notes
+
+- All Firebase client credentials are loaded from environment variables — no keys in source
+- OpenAI API key is stored as a Firebase Secret (never in env files or source)
+- Firestore security rules enforce per-team data isolation — users cannot read other teams' data
+- Storage rules restrict file access to authenticated owners only
+- Role-based access: team `owner` vs `member` permissions enforced server-side
+
+---
+
+## Screenshots / Demo
+
+> _Add screenshots here once deployed — suggested captures:_
+> - Dashboard (team view with recent meetings)
+> - Meeting details page (transcript + summary + action items)
+> - Upload flow
+> - Slack notification card
+
+---
+
+## Contributing
+
+1. Fork the repo and create a feature branch
+2. Run `npm run lint` before submitting a PR
+3. Ensure no `.env` files or API keys are included in commits
+
+---
+
+## License
+
+MIT

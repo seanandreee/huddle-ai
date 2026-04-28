@@ -107,12 +107,10 @@ const Integrations = () => {
   };
 
   const testSlackConnection = () => {
-    console.log("Testing Slack connection...");
     alert("Slack test message sent successfully!");
   };
 
   const saveJiraConfig = () => {
-    console.log("Saving Jira configuration:", jiraConfig);
     setIntegrations(prev => ({
       ...prev,
       jira: { ...prev.jira, configured: true }

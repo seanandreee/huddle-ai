@@ -123,7 +123,6 @@ const Team = () => {
               console.error("Error fetching team data:", error);
             }
           } else {
-            console.log("Team not found");
             toast({
               variant: "destructive",
               title: "Team not found",
@@ -147,11 +146,8 @@ const Team = () => {
     loadDashboardData();
   }, [currentUser, activeWorkspace]);
 
-  // Legacy checkTeamMembership deleted 
-  
   const loadTeamMembers = async (memberIds: string[]) => {
     if (!memberIds || memberIds.length === 0) {
-      console.log("No members to load");
       setTeamMembers([]);
       setIsLoadingMembers(false);
       return;
@@ -159,9 +155,7 @@ const Team = () => {
     
     try {
       setIsLoadingMembers(true);
-      console.log("Loading team members:", memberIds);
       const members = await getUsersByIds(memberIds);
-      console.log("Team members loaded:", members);
       setTeamMembers(members);
     } catch (error) {
       console.error("Error loading team members:", error);
@@ -198,7 +192,6 @@ const Team = () => {
       setIsLoadingStats(true);
       const stats = await getTeamMeetingStats(teamId);
       setMeetingStats(stats);
-      console.log("Meeting stats loaded:", stats);
     } catch (error) {
       console.error("Error loading meeting stats:", error);
       toast({

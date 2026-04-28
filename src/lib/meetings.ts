@@ -333,7 +333,6 @@ export const deleteMeeting = async (meetingId: string): Promise<boolean> => {
         const fileRef = ref(storage, filePath);
         
         await deleteObject(fileRef);
-        console.log("Meeting recording deleted from storage");
       } catch (storageError) {
         console.error("Error deleting meeting recording:", storageError);
         // Continue with deletion of the document even if file deletion fails
@@ -348,7 +347,6 @@ export const deleteMeeting = async (meetingId: string): Promise<boolean> => {
         const fileRef = ref(storage, filePath);
         
         await deleteObject(fileRef);
-        console.log("Meeting transcript deleted from storage");
       } catch (storageError) {
         console.error("Error deleting meeting transcript:", storageError);
         // Continue with deletion even if transcript deletion fails
@@ -357,7 +355,6 @@ export const deleteMeeting = async (meetingId: string): Promise<boolean> => {
     
     // Delete the meeting document from Firestore
     await deleteDoc(meetingRef);
-    console.log("Meeting document deleted from Firestore");
     
     return true;
   } catch (error) {
