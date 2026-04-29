@@ -1,15 +1,19 @@
 import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import { google } from "googleapis";
 import * as crypto from "crypto";
 
+// Bind secrets — IAM accessor role is now pre-granted on all three secrets
+const clientId = defineSecret("GOOGLE_OAUTH_CLIENT_ID");
+const clientSecret = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
+const encryptionKey = defineSecret("OAUTH_ENCRYPTION_KEY");
+
 // Ensure admin is initialized (usually done in index.ts)
 if (!admin.apps.length) {
   admin.initializeApp();
 }
-
-
 
 /**
  * AES-256-GCM Encryption utilities
@@ -27,10 +31,21 @@ function encryptToken(token: string, keyHex: string): string {
   });
 }
 
+function buildRedirectUri(): string {
+  if (process.env.FUNCTIONS_EMULATOR === "true") {
+    return "http://localhost:5001/huddleai-a812c/us-central1/googleOAuthCallback";
+  }
+  // Firebase Functions v2 deploys to Cloud Run URLs (*.run.app).
+  // The old cloudfunctions.net alias does NOT work as a redirect_uri for OAuth.
+  // This must exactly match one of the Authorized redirect URIs in Google Cloud Console.
+  return "https://us-central1-huddleai-a812c.cloudfunctions.net/googleOAuthCallback";
+}
+
 /**
- * 1. getGoogleOAuthUrl: Called by frontend to get the auth URL
+ * 1. getGoogleOAuthUrl — callable from the frontend to start the OAuth flow
  */
 export const getGoogleOAuthUrl = onCall(
+  { secrets: [clientId, clientSecret] },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "User must be logged in.");
@@ -41,21 +56,15 @@ export const getGoogleOAuthUrl = onCall(
       throw new HttpsError("invalid-argument", "workspaceId is required.");
     }
 
-    // Since onCall doesn't easily expose the full request URL for redirect_uri,
-    // we use a hardcoded or env-based approach. 
-    // In Firebase V2, the project ID is available.
-    const projectId = process.env.GCLOUD_PROJECT || "huddleai-a812c";
-    const region = process.env.FUNCTION_REGION || "us-central1";
-    // For local emulator:
-    const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
-    let redirectUri = `https://${region}-${projectId}.cloudfunctions.net/googleOAuthCallback`;
-    if (isEmulator) {
-      redirectUri = `http://127.0.0.1:5001/${projectId}/${region}/googleOAuthCallback`;
-    }
+    const redirectUri = buildRedirectUri();
+
+    // Diagnostic logging — verify values before sending to Google
+    logger.info("[getGoogleOAuthUrl] redirectUri:", redirectUri);
+    logger.info("[getGoogleOAuthUrl] clientId prefix:", clientId.value().trim().substring(0, 20));
 
     const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_OAUTH_CLIENT_ID,
-      process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      clientId.value().trim(),
+      clientSecret.value().trim(),
       redirectUri
     );
 
@@ -63,28 +72,28 @@ export const getGoogleOAuthUrl = onCall(
       "https://www.googleapis.com/auth/calendar.readonly",
       "https://www.googleapis.com/auth/drive.readonly",
       "https://www.googleapis.com/auth/drive.metadata.readonly",
-      "https://www.googleapis.com/auth/meetings.space.readonly",
     ];
 
-    // Encode state securely to pass context through the OAuth flow
     const stateObj = { userId: request.auth.uid, workspaceId };
     const state = Buffer.from(JSON.stringify(stateObj)).toString("base64");
 
     const url = oauth2Client.generateAuthUrl({
       access_type: "offline",
-      prompt: "consent", // Force consent to ensure refresh_token is returned
+      prompt: "consent",
       scope: scopes,
-      state: state,
+      state,
     });
 
+    logger.info("[getGoogleOAuthUrl] generated URL:", url);
     return { url };
   }
 );
 
 /**
- * 2. googleOAuthCallback: Receives the code from Google
+ * 2. googleOAuthCallback — HTTP endpoint Google redirects to after consent
  */
 export const googleOAuthCallback = onRequest(
+  { secrets: [clientId, clientSecret, encryptionKey] },
   async (req, res) => {
     try {
       const code = req.query.code as string;
@@ -101,7 +110,6 @@ export const googleOAuthCallback = onRequest(
         return;
       }
 
-      // Decode state
       const stateStr = Buffer.from(stateBase64, "base64").toString("utf8");
       const { userId, workspaceId } = JSON.parse(stateStr);
 
@@ -110,66 +118,50 @@ export const googleOAuthCallback = onRequest(
         return;
       }
 
-      // Reconstruct redirectUri
-      const projectId = process.env.GCLOUD_PROJECT || "huddleai-a812c";
-      const region = process.env.FUNCTION_REGION || "us-central1";
-      const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
-      let redirectUri = `https://${region}-${projectId}.cloudfunctions.net/googleOAuthCallback`;
-      if (isEmulator) {
-        redirectUri = `http://127.0.0.1:5001/${projectId}/${region}/googleOAuthCallback`;
-      }
+      const redirectUri = buildRedirectUri();
 
       const oauth2Client = new google.auth.OAuth2(
-        process.env.GOOGLE_OAUTH_CLIENT_ID,
-        process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+        clientId.value().trim(),
+        clientSecret.value().trim(),
         redirectUri
       );
 
-      // Exchange code for tokens
       const { tokens } = await oauth2Client.getToken(code);
       if (!tokens.refresh_token) {
-        logger.warn(`No refresh token received for user ${userId}. Prompt consent might not have worked.`);
-        // Note: Google only sends refresh_token on the first authorization. 
-        // We might need to ask the user to revoke and try again if missing, but we'll store what we get.
+        logger.warn(`No refresh token received for user ${userId}.`);
       }
 
       const db = admin.firestore();
-      
-      // If we got a refresh token, encrypt it and store it
+
       if (tokens.refresh_token) {
-        const encryptedRefreshToken = encryptToken(tokens.refresh_token, process.env.OAUTH_ENCRYPTION_KEY!);
-        
+        const encryptedRefreshToken = encryptToken(tokens.refresh_token, encryptionKey.value());
+
         await db.collection("users").doc(userId).collection("integrations").doc("google").set({
           workspaceId,
           encryptedRefreshToken,
           connectedAt: admin.firestore.FieldValue.serverTimestamp(),
-          status: "connected"
+          status: "connected",
         }, { merge: true });
-
-        // Trigger calendar webhook registration
-        // (We will handle the watch channel separately, but here we can just invoke the watch function)
       } else {
-        // Just store the access token (temporary, not ideal but better than nothing)
         await db.collection("users").doc(userId).collection("integrations").doc("google").set({
           workspaceId,
-          status: "connected_no_refresh"
+          status: "connected_no_refresh",
         }, { merge: true });
       }
 
-      // Redirect back to the frontend
-      // In a real production app, redirect to the exact domain (e.g. huddleai.app)
+      const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
       const frontendDomain = isEmulator ? "http://localhost:5173" : "https://huddleai.app";
       res.redirect(`${frontendDomain}/team/integrations?google_connected=true`);
-      
-    } catch (error) {
-      logger.error("Error in googleOAuthCallback:", error);
+
+    } catch (err) {
+      logger.error("Error in googleOAuthCallback:", err);
       res.status(500).send("An error occurred during authentication.");
     }
   }
 );
 
 /**
- * 3. disconnectGoogleIntegration: Callable to revoke tokens and wipe data
+ * 3. disconnectGoogleIntegration — callable to revoke access and wipe stored tokens
  */
 export const disconnectGoogleIntegration = onCall(
   async (request) => {
@@ -187,12 +179,10 @@ export const disconnectGoogleIntegration = onCall(
     }
 
     try {
-      // We would ideally call oauth2Client.revokeToken() here if we had the raw token.
-      // But simply deleting the doc stops auto-ingest.
       await integrationRef.delete();
       return { success: true };
-    } catch (error) {
-      logger.error("Error disconnecting Google:", error);
+    } catch (err) {
+      logger.error("Error disconnecting Google:", err);
       throw new HttpsError("internal", "Failed to disconnect Google integration.");
     }
   }
