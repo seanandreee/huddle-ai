@@ -1,49 +1,57 @@
+/**
+ * googleIntegration.ts
+ *
+ * Cloud Functions for the Google Workspace OAuth flow:
+ *   1. getGoogleOAuthUrl  — callable: returns the consent URL
+ *   2. googleOAuthCallback — HTTP: handles the redirect, stores token,
+ *                            and immediately registers a Calendar watch channel
+ *   3. disconnectGoogleIntegration — callable: stops the watch channel,
+ *                                    revokes the token, and deletes the doc
+ */
+
 import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import { google } from "googleapis";
-import * as crypto from "crypto";
+import {
+  encryptToken,
+  buildOAuth2Client,
+  registerWatchChannel,
+  stopWatchChannel,
+} from "./googleHelpers";
 
-// Bind secrets — IAM accessor role is now pre-granted on all three secrets
+// ── Secrets ───────────────────────────────────────────────────────────────────
 const clientId = defineSecret("GOOGLE_OAUTH_CLIENT_ID");
 const clientSecret = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
 const encryptionKey = defineSecret("OAUTH_ENCRYPTION_KEY");
 
-// Ensure admin is initialized (usually done in index.ts)
 if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-/**
- * AES-256-GCM Encryption utilities
- */
-function encryptToken(token: string, keyHex: string): string {
-  const key = Buffer.from(keyHex, "hex");
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const encrypted = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return JSON.stringify({
-    iv: iv.toString("hex"),
-    encrypted: encrypted.toString("hex"),
-    authTag: authTag.toString("hex"),
-  });
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function buildRedirectUri(): string {
   if (process.env.FUNCTIONS_EMULATOR === "true") {
     return "http://localhost:5001/huddleai-a812c/us-central1/googleOAuthCallback";
   }
-  // Firebase Functions v2 deploys to Cloud Run URLs (*.run.app).
-  // The old cloudfunctions.net alias does NOT work as a redirect_uri for OAuth.
-  // This must exactly match one of the Authorized redirect URIs in Google Cloud Console.
   return "https://us-central1-huddleai-a812c.cloudfunctions.net/googleOAuthCallback";
 }
 
-/**
- * 1. getGoogleOAuthUrl — callable from the frontend to start the OAuth flow
- */
+const ALLOWED_FRONTEND_ORIGINS = ["https://huddleai.app"];
+
+function validateFrontendOrigin(origin: unknown): string {
+  if (typeof origin === "string") {
+    if (ALLOWED_FRONTEND_ORIGINS.includes(origin)) return origin;
+    // Allow any localhost port for local dev
+    if (/^http:\/\/localhost(:\d+)?$/.test(origin)) return origin;
+  }
+  return "https://huddleai.app";
+}
+
+// ── 1. getGoogleOAuthUrl ──────────────────────────────────────────────────────
+
 export const getGoogleOAuthUrl = onCall(
   { secrets: [clientId, clientSecret] },
   async (request) => {
@@ -51,14 +59,13 @@ export const getGoogleOAuthUrl = onCall(
       throw new HttpsError("unauthenticated", "User must be logged in.");
     }
 
-    const { workspaceId } = request.data;
+    const { workspaceId, origin } = request.data as { workspaceId: string; origin?: string };
     if (!workspaceId) {
       throw new HttpsError("invalid-argument", "workspaceId is required.");
     }
+    const frontendOrigin = validateFrontendOrigin(origin);
 
     const redirectUri = buildRedirectUri();
-
-    // Diagnostic logging — verify values before sending to Google
     logger.info("[getGoogleOAuthUrl] redirectUri:", redirectUri);
     logger.info("[getGoogleOAuthUrl] clientId prefix:", clientId.value().trim().substring(0, 20));
 
@@ -74,8 +81,9 @@ export const getGoogleOAuthUrl = onCall(
       "https://www.googleapis.com/auth/drive.metadata.readonly",
     ];
 
-    const stateObj = { userId: request.auth.uid, workspaceId };
-    const state = Buffer.from(JSON.stringify(stateObj)).toString("base64");
+    const state = Buffer.from(
+      JSON.stringify({ userId: request.auth.uid, workspaceId, frontendOrigin })
+    ).toString("base64");
 
     const url = oauth2Client.generateAuthUrl({
       access_type: "offline",
@@ -89,9 +97,8 @@ export const getGoogleOAuthUrl = onCall(
   }
 );
 
-/**
- * 2. googleOAuthCallback — HTTP endpoint Google redirects to after consent
- */
+// ── 2. googleOAuthCallback ────────────────────────────────────────────────────
+
 export const googleOAuthCallback = onRequest(
   { secrets: [clientId, clientSecret, encryptionKey] },
   async (req, res) => {
@@ -111,7 +118,7 @@ export const googleOAuthCallback = onRequest(
       }
 
       const stateStr = Buffer.from(stateBase64, "base64").toString("utf8");
-      const { userId, workspaceId } = JSON.parse(stateStr);
+      const { userId, workspaceId, frontendOrigin } = JSON.parse(stateStr);
 
       if (!userId || !workspaceId) {
         res.status(400).send("Invalid state parameter.");
@@ -119,39 +126,67 @@ export const googleOAuthCallback = onRequest(
       }
 
       const redirectUri = buildRedirectUri();
-
       const oauth2Client = new google.auth.OAuth2(
         clientId.value().trim(),
         clientSecret.value().trim(),
         redirectUri
       );
 
+      // Exchange code for tokens
       const { tokens } = await oauth2Client.getToken(code);
+
       if (!tokens.refresh_token) {
-        logger.warn(`No refresh token received for user ${userId}.`);
+        logger.warn(`[googleOAuthCallback] No refresh token for user ${userId}.`);
       }
 
       const db = admin.firestore();
+      const integrationRef = db
+        .collection("users")
+        .doc(userId)
+        .collection("integrations")
+        .doc("google");
 
+      // ── Store token ───────────────────────────────────────────────────────
       if (tokens.refresh_token) {
-        const encryptedRefreshToken = encryptToken(tokens.refresh_token, encryptionKey.value());
-
-        await db.collection("users").doc(userId).collection("integrations").doc("google").set({
-          workspaceId,
-          encryptedRefreshToken,
-          connectedAt: admin.firestore.FieldValue.serverTimestamp(),
-          status: "connected",
-        }, { merge: true });
+        const encryptedRefreshToken = encryptToken(
+          tokens.refresh_token,
+          encryptionKey.value()
+        );
+        await integrationRef.set(
+          {
+            workspaceId,
+            encryptedRefreshToken,
+            connectedAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: "connected",
+          },
+          { merge: true }
+        );
       } else {
-        await db.collection("users").doc(userId).collection("integrations").doc("google").set({
-          workspaceId,
-          status: "connected_no_refresh",
-        }, { merge: true });
+        await integrationRef.set(
+          { workspaceId, status: "connected_no_refresh" },
+          { merge: true }
+        );
       }
 
-      const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
-      const frontendDomain = isEmulator ? "http://localhost:8080" : "https://huddleai.app";
-      res.redirect(`${frontendDomain}/integrations?google_connected=true`);
+      // ── Register Calendar watch channel ───────────────────────────────────
+      // Only attempt watch if we have a refresh token — we need it to mint
+      // a new access token for the calendar.events.watch call.
+      if (tokens.refresh_token) {
+        try {
+          oauth2Client.setCredentials({ refresh_token: tokens.refresh_token });
+          await registerWatchChannel(userId, integrationRef, oauth2Client);
+        } catch (watchErr) {
+          // Non-fatal: the user is connected, watch registration can be retried
+          // by the daily refresh job or on next OAuth.
+          logger.error(
+            `[googleOAuthCallback] Failed to register watch channel for user ${userId}`,
+            watchErr
+          );
+        }
+      }
+
+      const redirectBase = validateFrontendOrigin(frontendOrigin);
+      res.redirect(`${redirectBase}/integrations?google_connected=true`);
 
     } catch (err) {
       logger.error("Error in googleOAuthCallback:", err);
@@ -160,26 +195,66 @@ export const googleOAuthCallback = onRequest(
   }
 );
 
-/**
- * 3. disconnectGoogleIntegration — callable to revoke access and wipe stored tokens
- */
+// ── 3. disconnectGoogleIntegration ────────────────────────────────────────────
+
 export const disconnectGoogleIntegration = onCall(
+  { secrets: [clientId, clientSecret, encryptionKey] },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "User must be logged in.");
     }
+
     const userId = request.auth.uid;
     const db = admin.firestore();
+    const integrationRef = db
+      .collection("users")
+      .doc(userId)
+      .collection("integrations")
+      .doc("google");
 
-    const integrationRef = db.collection("users").doc(userId).collection("integrations").doc("google");
     const doc = await integrationRef.get();
-
     if (!doc.exists) {
       throw new HttpsError("not-found", "No Google integration found.");
     }
 
+    const data = doc.data()!;
+
     try {
-      await integrationRef.delete();
+      // Stop the watch channel so Google stops sending notifications
+      if (data.encryptedRefreshToken) {
+        const auth = buildOAuth2Client(
+          clientId.value(),
+          clientSecret.value(),
+          data.encryptedRefreshToken,
+          encryptionKey.value()
+        );
+        await stopWatchChannel(
+          auth,
+          data.googleChannelId,
+          data.googleResourceId,
+          userId
+        );
+
+        // Attempt to revoke the access token at Google to fully de-authorize
+        try {
+          const tokenRes = await auth.getAccessToken();
+          if (tokenRes.token) {
+            await auth.revokeToken(tokenRes.token);
+          }
+        } catch (revokeErr) {
+          logger.warn(`[disconnectGoogleIntegration] Token revoke failed for user ${userId}`, revokeErr);
+        }
+      }
+
+      // Generate a one-time state token for CSRF so we can safely delete
+      // the processedEvents subcollection too (Admin SDK bypasses rules).
+      const processedEventsRef = integrationRef.collection("processedEvents");
+      const processed = await processedEventsRef.limit(500).get();
+      const batch = db.batch();
+      processed.docs.forEach((d) => batch.delete(d.ref));
+      batch.delete(integrationRef);
+      await batch.commit();
+
       return { success: true };
     } catch (err) {
       logger.error("Error disconnecting Google:", err);
@@ -187,3 +262,47 @@ export const disconnectGoogleIntegration = onCall(
     }
   }
 );
+
+// ── 4. manualRegisterWatchChannel (callable, for debugging / re-registration) ─
+
+export const manualRegisterWatchChannel = onCall(
+  { secrets: [clientId, clientSecret, encryptionKey] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "User must be logged in.");
+    }
+
+    const userId = request.auth.uid;
+    const db = admin.firestore();
+    const integrationRef = db
+      .collection("users")
+      .doc(userId)
+      .collection("integrations")
+      .doc("google");
+
+    const doc = await integrationRef.get();
+    if (!doc.exists || !doc.data()?.encryptedRefreshToken) {
+      throw new HttpsError("not-found", "No Google integration with refresh token found.");
+    }
+
+    const data = doc.data()!;
+
+    // Stop old channel first if one exists
+    const auth = buildOAuth2Client(
+      clientId.value(),
+      clientSecret.value(),
+      data.encryptedRefreshToken,
+      encryptionKey.value()
+    );
+
+    await stopWatchChannel(auth, data.googleChannelId, data.googleResourceId, userId);
+
+    // Register new channel
+    await registerWatchChannel(userId, integrationRef, auth);
+
+    return { success: true };
+  }
+);
+
+// Re-export helpers so calendarWebhook can import without going through index.ts
+export { encryptToken, decryptToken } from "./googleHelpers";

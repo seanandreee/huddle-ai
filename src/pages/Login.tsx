@@ -31,11 +31,15 @@ const Login = () => {
         description: "You have been logged in successfully.",
       });
       
-      // Navigate to team-setup if invite exists, otherwise standard dashboard
+      // Navigate to team-setup if invite exists, then to any saved post-login
+      // destination (e.g. /integrations?google_connected=true after OAuth),
+      // otherwise fall back to the standard dashboard.
       if (inviteToken) {
         navigate(`/team-setup?invite=${inviteToken}`);
       } else {
-        navigate("/team");
+        const redirect = sessionStorage.getItem('postLoginRedirect');
+        sessionStorage.removeItem('postLoginRedirect');
+        navigate(redirect || '/team');
       }
     } catch (error) {
       console.error("Login error:", error);
@@ -57,7 +61,9 @@ const Login = () => {
       if (inviteToken) {
         navigate(`/team-setup?invite=${inviteToken}`);
       } else {
-        navigate("/team");
+        const redirect = sessionStorage.getItem('postLoginRedirect');
+        sessionStorage.removeItem('postLoginRedirect');
+        navigate(redirect || '/team');
       }
     } catch (error) {
       console.error("Google sign-in error:", error);

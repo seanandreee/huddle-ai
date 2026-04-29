@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,12 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { MessageSquare, ArrowLeft, Settings, CheckCircle, AlertCircle, Video } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/lib/WorkspaceContext";
 import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -19,7 +18,6 @@ const Integrations = () => {
   const { currentUser } = useAuth();
   const { activeWorkspace } = useWorkspace();
   const { toast } = useToast();
-  const [searchParams] = useSearchParams();
 
   const [integrations, setIntegrations] = useState({
     google: { enabled: false, configured: false },
@@ -28,37 +26,44 @@ const Integrations = () => {
   });
 
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const googleConnectedToastShown = useRef(false);
 
-  // Load Google integration status whenever auth resolves
   useEffect(() => {
     if (!currentUser) return;
-    const loadGoogleStatus = async () => {
-      try {
-        const docRef = doc(db, "users", currentUser.uid, "integrations", "google");
-        const snap = await getDoc(docRef);
+
+    const integrationRef = doc(db, "users", currentUser.uid, "integrations", "google");
+    const unsubscribe = onSnapshot(
+      integrationRef,
+      (snap) => {
         if (snap.exists()) {
           const status = snap.data().status as string;
-          if (status === "connected" || status === "connected_no_refresh") {
-            setIntegrations(prev => ({
-              ...prev,
-              google: { enabled: true, configured: true }
-            }));
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load Google integration status:", err);
-      }
-    };
-    loadGoogleStatus();
-  }, [currentUser]);
+          const isConnected = status === "connected" || status === "connected_no_refresh";
+          setIntegrations(prev => ({
+            ...prev,
+            google: { enabled: isConnected, configured: isConnected }
+          }));
 
-  // Show success toast once after OAuth redirect
-  useEffect(() => {
-    if (searchParams.get('google_connected') === 'true') {
-      toast({ title: "Connected", description: "Google Workspace successfully connected for auto-ingest." });
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, [searchParams, toast]);
+          if (isConnected && !googleConnectedToastShown.current) {
+            googleConnectedToastShown.current = true;
+            if (new URLSearchParams(window.location.search).get('google_connected') === 'true') {
+              toast({ title: "Connected", description: "Google Workspace successfully connected for auto-ingest." });
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          }
+        } else {
+          setIntegrations(prev => ({
+            ...prev,
+            google: { enabled: false, configured: false }
+          }));
+        }
+      },
+      (err) => {
+        console.error("[Integrations] Firestore snapshot error:", err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser, toast]);
 
   const handleConnectGoogle = async () => {
     if (integrations.google.configured) {
@@ -83,8 +88,8 @@ const Integrations = () => {
       try {
         setIsGoogleLoading(true);
         const functions = getFunctions();
-        const getUrl = httpsCallable<{workspaceId: string}, {url: string}>(functions, 'getGoogleOAuthUrl');
-        const response = await getUrl({ workspaceId: activeWorkspace?.id || 'personal' });
+        const getUrl = httpsCallable<{ workspaceId: string; origin: string }, { url: string }>(functions, 'getGoogleOAuthUrl');
+        const response = await getUrl({ workspaceId: activeWorkspace?.id || 'personal', origin: window.location.origin });
         window.location.href = response.data.url;
       } catch (err) {
         toast({ title: "Error", description: "Failed to get Google Auth URL", variant: "destructive" });
@@ -186,7 +191,7 @@ const Integrations = () => {
                       Not Configured
                     </Badge>
                   )}
-                  <Button 
+                  <Button
                     variant={integrations.google.configured ? "outline" : "default"}
                     onClick={handleConnectGoogle}
                     disabled={isGoogleLoading}

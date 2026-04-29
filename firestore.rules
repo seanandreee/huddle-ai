@@ -36,6 +36,13 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
     }
 
+    // ── Calendar event deduplication log (written by Cloud Functions only) ────
+    // Users can read their own processed events log.
+    match /users/{userId}/integrations/{integrationId}/processedEvents/{eventId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Cloud Functions write via Admin SDK (bypass rules)
+    }
+
     // ── User Teams map (userId → { teams, currentTeam, pendingInvites }) ─────
     match /userTeams/{userId} {
       allow read, write: if isOwner(userId);

@@ -36,6 +36,10 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
   }
 
   if (!currentUser) {
+    const intended = window.location.pathname + window.location.search;
+    if (intended !== '/' && intended !== '/login') {
+      sessionStorage.setItem('postLoginRedirect', intended);
+    }
     return <Navigate to="/login" />;
   }
 

@@ -1254,3 +1254,4 @@ export const sendMeetingToSlack = onCall(
 // --- Google Integrations ---
 export * from "./googleIntegration";
 export * from "./calendarWebhook";
+export * from "./refreshWatchChannels";
