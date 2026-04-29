@@ -30,6 +30,12 @@ service cloud.firestore {
       allow write: if isOwner(userId);
     }
 
+    // ── User Integrations (OAuth tokens, etc.) ────────────────────────────────
+    // Only the owning user can read/write their own integration data.
+    match /users/{userId}/integrations/{integrationId} {
+      allow read, write: if isOwner(userId);
+    }
+
     // ── User Teams map (userId → { teams, currentTeam, pendingInvites }) ─────
     match /userTeams/{userId} {
       allow read, write: if isOwner(userId);

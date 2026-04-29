@@ -29,27 +29,36 @@ const Integrations = () => {
 
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  // Load Google Integration status
+  // Load Google integration status whenever auth resolves
   useEffect(() => {
     if (!currentUser) return;
     const loadGoogleStatus = async () => {
-      const docRef = doc(db, "users", currentUser.uid, "integrations", "google");
-      const snap = await getDoc(docRef);
-      if (snap.exists() && snap.data().status === "connected") {
-        setIntegrations(prev => ({
-          ...prev,
-          google: { enabled: true, configured: true }
-        }));
+      try {
+        const docRef = doc(db, "users", currentUser.uid, "integrations", "google");
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const status = snap.data().status as string;
+          if (status === "connected" || status === "connected_no_refresh") {
+            setIntegrations(prev => ({
+              ...prev,
+              google: { enabled: true, configured: true }
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load Google integration status:", err);
       }
     };
     loadGoogleStatus();
+  }, [currentUser]);
 
+  // Show success toast once after OAuth redirect
+  useEffect(() => {
     if (searchParams.get('google_connected') === 'true') {
       toast({ title: "Connected", description: "Google Workspace successfully connected for auto-ingest." });
-      // Remove query param to prevent toast re-triggering on refresh
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, [currentUser, searchParams, toast]);
+  }, [searchParams, toast]);
 
   const handleConnectGoogle = async () => {
     if (integrations.google.configured) {

@@ -150,8 +150,8 @@ export const googleOAuthCallback = onRequest(
       }
 
       const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
-      const frontendDomain = isEmulator ? "http://localhost:5173" : "https://huddleai.app";
-      res.redirect(`${frontendDomain}/team/integrations?google_connected=true`);
+      const frontendDomain = isEmulator ? "http://localhost:8080" : "https://huddleai.app";
+      res.redirect(`${frontendDomain}/integrations?google_connected=true`);
 
     } catch (err) {
       logger.error("Error in googleOAuthCallback:", err);
