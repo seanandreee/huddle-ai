@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { 
+import {
   MessageSquare, ArrowLeft, Search, FileText,
   User, Calendar as CalendarIcon, Loader2, AlertCircle,
   ExternalLink, Copy, Check
@@ -12,12 +12,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useActionItems, ExtendedActionItem } from "@/hooks/useActionItems";
 import { getUserTeams, getTeamById, Team as TeamType } from "@/lib/db";
 import { useToast } from "@/components/ui/use-toast";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 const ActionItems = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentTeam, setCurrentTeam] = useState<TeamType | null>(null);
   const [isLoadingTeam, setIsLoadingTeam] = useState(true);
   const [copiedAll, setCopiedAll] = useState(false);
+  const [sendingToJira, setSendingToJira] = useState<Record<string, boolean>>({});
 
   const navigate = useNavigate();
   const { currentUser } = useAuth();
@@ -75,11 +77,54 @@ const ActionItems = () => {
       day: "numeric",
     });
 
-  const handleSendToJira = () => {
-    toast({
-      title: "Jira Integration — Coming Soon",
-      description: "One-click Jira ticket creation is available on the Team plan.",
-    });
+  const handleSendToJira = async (item: ExtendedActionItem) => {
+    const key = `${item.id}-${item.meetingId}`;
+    if (!item.teamId) {
+      toast({ title: "No team", description: "Action item has no team — cannot send to Jira.", variant: "destructive" });
+      return;
+    }
+    try {
+      setSendingToJira((prev) => ({ ...prev, [key]: true }));
+      const fns = getFunctions();
+      const createIssue = httpsCallable<
+        { teamId: string; description: string; assigneeName?: string; meetingTitle?: string; meetingDate?: string },
+        { issueKey: string; issueUrl: string }
+      >(fns, "createJiraIssue");
+
+      const result = await createIssue({
+        teamId: item.teamId,
+        description: item.description,
+        assigneeName: item.assignedToName,
+        meetingTitle: item.meetingTitle,
+        meetingDate: item.createdAt
+          ? new Date(
+              typeof item.createdAt === "object" && "toDate" in item.createdAt
+                ? (item.createdAt as { toDate: () => Date }).toDate()
+                : item.createdAt
+            ).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+          : undefined,
+      });
+
+      toast({
+        title: `Created ${result.data.issueKey}`,
+        description: (
+          <a href={result.data.issueUrl} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">
+            View {result.data.issueKey} in Jira →
+          </a>
+        ),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to create Jira issue.";
+      toast({
+        title: msg.includes("field mapping") ? "Jira not configured" : "Jira error",
+        description: msg.includes("field mapping")
+          ? "Go to Integrations → Jira to set up your project mapping."
+          : msg,
+        variant: "destructive",
+      });
+    } finally {
+      setSendingToJira((prev) => ({ ...prev, [key]: false }));
+    }
   };
 
   const handleSendToLinear = () => {
@@ -235,10 +280,12 @@ const ActionItems = () => {
                         size="sm"
                         variant="outline"
                         className="text-xs h-7 px-2.5 border-gray-200 hover:border-blue-300 hover:text-blue-700"
-                        onClick={handleSendToJira}
+                        onClick={() => handleSendToJira(item)}
+                        disabled={sendingToJira[`${item.id}-${item.meetingId}`]}
                       >
-                        <ExternalLink className="w-3 h-3 mr-1" />
-                        Jira
+                        {sendingToJira[`${item.id}-${item.meetingId}`]
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><ExternalLink className="w-3 h-3 mr-1" />Jira</>}
                       </Button>
                       <Button
                         size="sm"

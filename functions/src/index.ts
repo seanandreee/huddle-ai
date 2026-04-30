@@ -1255,3 +1255,6 @@ export const sendMeetingToSlack = onCall(
 export * from "./googleIntegration";
 export * from "./calendarWebhook";
 export * from "./refreshWatchChannels";
+
+// --- Jira Integration ---
+export * from "./jiraIntegration";
