@@ -6,13 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { 
-  MessageSquare, 
-  ArrowLeft, 
-  Calendar, 
-  Clock, 
-  Users, 
-  CheckCircle2, 
+import {
+  MessageSquare,
+  ArrowLeft,
+  Calendar,
+  Clock,
+  Users,
+  CheckCircle2,
   AlertCircle,
   FileText,
   Video,
@@ -27,7 +27,8 @@ import {
   User,
   CalendarIcon,
   MoreVertical,
-  Play
+  Play,
+  ExternalLink
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -1097,8 +1098,8 @@ const MeetingDetails = () => {
                 
                 {meeting.transcript && (
                   <div className="mt-4">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="w-full text-sm h-8"
                       onClick={() => {
                         const transcriptSection = document.querySelector('[data-transcript-section]');
@@ -1108,6 +1109,16 @@ const MeetingDetails = () => {
                       <FileText className="w-3 h-3 mr-2" />
                       View Full Transcript
                     </Button>
+                  </div>
+                )}
+                {meeting.notionPageUrl && (
+                  <div className="mt-2">
+                    <a href={meeting.notionPageUrl} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" className="w-full text-sm h-8">
+                        <ExternalLink className="w-3 h-3 mr-2" />
+                        View in Notion
+                      </Button>
+                    </a>
                   </div>
                 )}
               </CardContent>

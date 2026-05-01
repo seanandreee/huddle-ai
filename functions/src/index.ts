@@ -21,9 +21,11 @@ import * as os from "os";
 import * as fs from "fs";
 import { config } from "./config";
 import OpenAI from "openai";
+import { syncMeetingToNotionIfEnabled } from "./notionIntegration";
 
-// Define the secret
+// Define secrets
 const openaiApiKey = defineSecret("OPENAI_API_KEY");
+const oauthEncryptionKey = defineSecret("OAUTH_ENCRYPTION_KEY");
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -78,7 +80,7 @@ export const processMeetingUpload = onObjectFinalized(
     timeoutSeconds: 540,
     memory: "2GiB",
     cpu: 2,
-    secrets: [openaiApiKey]
+    secrets: [openaiApiKey, oauthEncryptionKey]
   },
   async (event) => {
     const filePath = event.data.name;
@@ -669,6 +671,13 @@ async function processMeetingFile(filePath: string, meetingId: string, teamId: s
 
     await admin.firestore().collection("meetings").doc(meetingId).update(updateData);
 
+    // Notion sync — non-fatal, must never fail meeting processing
+    try {
+      await syncMeetingToNotionIfEnabled(meetingId, teamId, oauthEncryptionKey.value(), insights);
+    } catch (notionErr) {
+      logger.warn("[processMeetingFile] Notion sync failed (non-fatal):", notionErr);
+    }
+
     // Clean up temporary files
     await cleanupTempFiles(audioPath);
 
@@ -1258,3 +1267,6 @@ export * from "./refreshWatchChannels";
 
 // --- Jira Integration ---
 export * from "./jiraIntegration";
+
+// --- Notion Integration ---
+export * from "./notionIntegration";

@@ -14,6 +14,19 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/components/ui/use-toast";
 
+interface NotionIntegrationData {
+  status: string;
+  workspaceName: string | null;
+  databaseId: string | null;
+  databaseName: string | null;
+}
+
+interface NotionDatabase {
+  id: string;
+  name: string;
+  url: string;
+}
+
 interface JiraIntegrationData {
   status: string;
   cloudId: string | null;
@@ -61,6 +74,17 @@ const Integrations = () => {
   const [isSavingMapping, setIsSavingMapping] = useState(false);
   const jiraConnectedToastShown = useRef(false);
 
+  // Notion state
+  const [notionData, setNotionData] = useState<NotionIntegrationData | null>(null);
+  const [isNotionLoading, setIsNotionLoading] = useState(false);
+  const [notionDatabases, setNotionDatabases] = useState<NotionDatabase[]>([]);
+  const [isLoadingDatabases, setIsLoadingDatabases] = useState(false);
+  const [showNotionDbForm, setShowNotionDbForm] = useState(false);
+  const [selectedDatabaseId, setSelectedDatabaseId] = useState("");
+  const [selectedDatabaseName, setSelectedDatabaseName] = useState("");
+  const [isSavingDatabase, setIsSavingDatabase] = useState(false);
+  const notionConnectedToastShown = useRef(false);
+
   // Google Firestore listener
   useEffect(() => {
     if (!currentUser) return;
@@ -105,6 +129,30 @@ const Integrations = () => {
         jiraConnectedToastShown.current = false;
       }
     }, (err) => console.error("[Integrations] Jira snapshot error:", err));
+    return () => unsubscribe();
+  }, [activeWorkspace, toast]);
+
+  // Notion Firestore listener
+  useEffect(() => {
+    const teamId = activeWorkspace?.type === "team" ? activeWorkspace.id : null;
+    if (!teamId) { setNotionData(null); return; }
+
+    const notionRef = doc(db, "teams", teamId, "integrations", "notion");
+    const unsubscribe = onSnapshot(notionRef, (snap) => {
+      if (snap.exists()) {
+        setNotionData(snap.data() as NotionIntegrationData);
+        if (!notionConnectedToastShown.current) {
+          notionConnectedToastShown.current = true;
+          if (new URLSearchParams(window.location.search).get("notion_connected") === "true") {
+            toast({ title: "Notion connected", description: "Now select a database to sync meetings to." });
+            window.history.replaceState({}, "", window.location.pathname);
+          }
+        }
+      } else {
+        setNotionData(null);
+        notionConnectedToastShown.current = false;
+      }
+    }, (err) => console.error("[Integrations] Notion snapshot error:", err));
     return () => unsubscribe();
   }, [activeWorkspace, toast]);
 
@@ -252,6 +300,76 @@ const Integrations = () => {
     }
   };
 
+  // Notion handlers
+  const handleConnectNotion = async () => {
+    const teamId = activeWorkspace?.type === "team" ? activeWorkspace.id : null;
+    if (!teamId) return;
+    try {
+      setIsNotionLoading(true);
+      const fns = getFunctions();
+      const getUrl = httpsCallable<{ teamId: string }, { url: string }>(fns, "getNotionOAuthUrl");
+      const response = await getUrl({ teamId });
+      window.location.href = response.data.url;
+    } catch {
+      toast({ title: "Error", description: "Failed to start Notion connection.", variant: "destructive" });
+      setIsNotionLoading(false);
+    }
+  };
+
+  const handleDisconnectNotion = async () => {
+    const teamId = activeWorkspace?.type === "team" ? activeWorkspace.id : null;
+    if (!teamId) return;
+    try {
+      setIsNotionLoading(true);
+      const fns = getFunctions();
+      await httpsCallable(fns, "disconnectNotionIntegration")({ teamId });
+      setNotionData(null);
+      setNotionDatabases([]);
+      setShowNotionDbForm(false);
+      toast({ title: "Disconnected", description: "Notion disconnected." });
+    } catch {
+      toast({ title: "Error", description: "Failed to disconnect Notion.", variant: "destructive" });
+    } finally {
+      setIsNotionLoading(false);
+    }
+  };
+
+  const handleLoadDatabases = async () => {
+    const teamId = activeWorkspace?.type === "team" ? activeWorkspace.id : null;
+    if (!teamId) return;
+    try {
+      setIsLoadingDatabases(true);
+      const fns = getFunctions();
+      const fn = httpsCallable<{ teamId: string }, { databases: NotionDatabase[] }>(fns, "getNotionDatabases");
+      const result = await fn({ teamId });
+      setNotionDatabases(result.data.databases);
+      setShowNotionDbForm(true);
+    } catch {
+      toast({ title: "Error", description: "Failed to load Notion databases.", variant: "destructive" });
+    } finally {
+      setIsLoadingDatabases(false);
+    }
+  };
+
+  const handleSaveDatabase = async () => {
+    const teamId = activeWorkspace?.type === "team" ? activeWorkspace.id : null;
+    if (!teamId || !selectedDatabaseId) {
+      toast({ title: "Error", description: "Select a database first.", variant: "destructive" });
+      return;
+    }
+    try {
+      setIsSavingDatabase(true);
+      const fns = getFunctions();
+      await httpsCallable(fns, "saveNotionDatabase")({ teamId, databaseId: selectedDatabaseId, databaseName: selectedDatabaseName });
+      setShowNotionDbForm(false);
+      toast({ title: "Saved", description: `Meetings will sync to "${selectedDatabaseName}".` });
+    } catch {
+      toast({ title: "Error", description: "Failed to save database selection.", variant: "destructive" });
+    } finally {
+      setIsSavingDatabase(false);
+    }
+  };
+
   const toggleSlack = () => {
     setIntegrations(prev => ({
       ...prev,
@@ -262,6 +380,8 @@ const Integrations = () => {
   const teamId = activeWorkspace?.type === "team" ? activeWorkspace.id : null;
   const jiraIsConnected = jiraData?.status === "connected";
   const jiraHasMapping = jiraIsConnected && !!jiraData?.projectKey;
+  const notionIsConnected = notionData?.status === "connected";
+  const notionHasDatabase = notionIsConnected && !!notionData?.databaseId;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
@@ -510,6 +630,129 @@ const Integrations = () => {
                         </Button>
                         {jiraHasMapping && (
                           <Button variant="outline" onClick={() => setShowMappingForm(false)}>Cancel</Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+          )}
+
+          {/* Notion */}
+          {!teamId ? (
+            <Card className="border-0 shadow-lg opacity-60">
+              <CardHeader>
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <span className="text-xl font-bold text-gray-600">N</span>
+                  </div>
+                  <div>
+                    <CardTitle>Notion</CardTitle>
+                    <CardDescription>Switch to a team workspace to connect Notion</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
+          ) : (
+            <Card className={`border-0 shadow-lg ${notionIsConnected ? "border-l-4 border-l-green-500" : ""}`}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <span className="text-xl font-bold text-gray-700">N</span>
+                    </div>
+                    <div>
+                      <CardTitle>Notion</CardTitle>
+                      <CardDescription>
+                        {notionHasDatabase
+                          ? `Syncing to "${notionData!.databaseName}"`
+                          : notionIsConnected && notionData?.workspaceName
+                          ? `Connected to ${notionData.workspaceName}`
+                          : "Auto-sync meeting summaries to Notion"}
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    {notionIsConnected ? (
+                      <Badge className="bg-green-100 text-green-800">
+                        <CheckCircle className="w-3 h-3 mr-1" />Connected
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">
+                        <AlertCircle className="w-3 h-3 mr-1" />Not Configured
+                      </Badge>
+                    )}
+                    {notionIsConnected ? (
+                      <div className="flex items-center gap-2">
+                        {notionHasDatabase && (
+                          <Button size="sm" variant="outline" onClick={handleLoadDatabases} disabled={isLoadingDatabases}>
+                            {isLoadingDatabases ? <Loader2 className="w-3 h-3 animate-spin" /> : "Change Database"}
+                          </Button>
+                        )}
+                        <Button variant="outline" onClick={handleDisconnectNotion} disabled={isNotionLoading}>
+                          {isNotionLoading ? "Processing..." : "Disconnect"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={handleConnectNotion}
+                        disabled={isNotionLoading}
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                      >
+                        {isNotionLoading ? "Connecting..." : "Connect Notion"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+
+              {/* Database selector — shown when connected but no database yet, or when changing */}
+              {notionIsConnected && (!notionHasDatabase || showNotionDbForm) && (
+                <CardContent className="space-y-3 pt-0">
+                  <p className="text-sm text-gray-500">
+                    {notionHasDatabase ? "Select a different database:" : "Select the Notion database to sync meetings to:"}
+                  </p>
+
+                  {!showNotionDbForm ? (
+                    <Button variant="outline" onClick={handleLoadDatabases} disabled={isLoadingDatabases}>
+                      {isLoadingDatabases
+                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Loading databases...</>
+                        : "Select Database"}
+                    </Button>
+                  ) : (
+                    <div className="space-y-3 max-w-sm">
+                      <div className="space-y-1">
+                        <Label>Database</Label>
+                        <Select
+                          value={selectedDatabaseId}
+                          onValueChange={(id) => {
+                            setSelectedDatabaseId(id);
+                            setSelectedDatabaseName(notionDatabases.find((d) => d.id === id)?.name || id);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a database" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {notionDatabases.map((db) => (
+                              <SelectItem key={db.id} value={db.id}>{db.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          onClick={handleSaveDatabase}
+                          disabled={isSavingDatabase || !selectedDatabaseId}
+                          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                        >
+                          {isSavingDatabase
+                            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</>
+                            : "Save"}
+                        </Button>
+                        {notionHasDatabase && (
+                          <Button variant="outline" onClick={() => setShowNotionDbForm(false)}>Cancel</Button>
                         )}
                       </div>
                     </div>

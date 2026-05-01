@@ -122,6 +122,9 @@ export interface Meeting {
   slackNotificationSent?: boolean;
   slackNotificationSentAt?: Timestamp;
   slackNotificationSentBy?: string;
+  // Notion sync tracking
+  notionPageId?: string;
+  notionPageUrl?: string;
   processedAt?: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
