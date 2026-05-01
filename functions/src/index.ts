@@ -1270,3 +1270,9 @@ export * from "./jiraIntegration";
 
 // --- Notion Integration ---
 export * from "./notionIntegration";
+
+// --- Linear Integration ---
+export * from "./linearIntegration";
+
+// --- Asana Integration ---
+export * from "./asanaIntegration";

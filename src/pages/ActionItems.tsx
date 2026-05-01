@@ -20,6 +20,8 @@ const ActionItems = () => {
   const [isLoadingTeam, setIsLoadingTeam] = useState(true);
   const [copiedAll, setCopiedAll] = useState(false);
   const [sendingToJira, setSendingToJira] = useState<Record<string, boolean>>({});
+  const [sendingToLinear, setSendingToLinear] = useState<Record<string, boolean>>({});
+  const [sendingToAsana, setSendingToAsana] = useState<Record<string, boolean>>({});
 
   const navigate = useNavigate();
   const { currentUser } = useAuth();
@@ -127,11 +129,104 @@ const ActionItems = () => {
     }
   };
 
-  const handleSendToLinear = () => {
-    toast({
-      title: "Linear Integration — Coming Soon",
-      description: "One-click Linear issue creation is available on the Team plan.",
-    });
+  const handleSendToLinear = async (item: ExtendedActionItem) => {
+    const key = `${item.id}-${item.meetingId}`;
+    if (!item.teamId) {
+      toast({ title: "No team", description: "Action item has no team — cannot send to Linear.", variant: "destructive" });
+      return;
+    }
+    try {
+      setSendingToLinear((prev) => ({ ...prev, [key]: true }));
+      const fns = getFunctions();
+      const createIssue = httpsCallable<
+        { teamId: string; description: string; assigneeName?: string; meetingTitle?: string; meetingDate?: string },
+        { issueKey: string; issueUrl: string }
+      >(fns, "createLinearIssue");
+
+      const result = await createIssue({
+        teamId: item.teamId,
+        description: item.description,
+        assigneeName: item.assignedToName,
+        meetingTitle: item.meetingTitle,
+        meetingDate: item.createdAt
+          ? new Date(
+              typeof item.createdAt === "object" && "toDate" in item.createdAt
+                ? (item.createdAt as { toDate: () => Date }).toDate()
+                : item.createdAt
+            ).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+          : undefined,
+      });
+
+      toast({
+        title: `Created ${result.data.issueKey}`,
+        description: (
+          <a href={result.data.issueUrl} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">
+            View {result.data.issueKey} in Linear →
+          </a>
+        ),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to create Linear issue.";
+      toast({
+        title: msg.includes("not configured") ? "Linear not configured" : "Linear error",
+        description: msg.includes("not configured")
+          ? "Go to Integrations → Linear to set up your team mapping."
+          : msg,
+        variant: "destructive",
+      });
+    } finally {
+      setSendingToLinear((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleSendToAsana = async (item: ExtendedActionItem) => {
+    const key = `${item.id}-${item.meetingId}`;
+    if (!item.teamId) {
+      toast({ title: "No team", description: "Action item has no team — cannot send to Asana.", variant: "destructive" });
+      return;
+    }
+    try {
+      setSendingToAsana((prev) => ({ ...prev, [key]: true }));
+      const fns = getFunctions();
+      const createTask = httpsCallable<
+        { teamId: string; description: string; assigneeName?: string; meetingTitle?: string; meetingDate?: string },
+        { taskId: string; taskUrl: string }
+      >(fns, "createAsanaTask");
+
+      const result = await createTask({
+        teamId: item.teamId,
+        description: item.description,
+        assigneeName: item.assignedToName,
+        meetingTitle: item.meetingTitle,
+        meetingDate: item.createdAt
+          ? new Date(
+              typeof item.createdAt === "object" && "toDate" in item.createdAt
+                ? (item.createdAt as { toDate: () => Date }).toDate()
+                : item.createdAt
+            ).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+          : undefined,
+      });
+
+      toast({
+        title: "Asana task created",
+        description: (
+          <a href={result.data.taskUrl} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">
+            View task in Asana →
+          </a>
+        ),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to create Asana task.";
+      toast({
+        title: msg.includes("not configured") ? "Asana not configured" : "Asana error",
+        description: msg.includes("not configured")
+          ? "Go to Integrations → Asana to set up your project mapping."
+          : msg,
+        variant: "destructive",
+      });
+    } finally {
+      setSendingToAsana((prev) => ({ ...prev, [key]: false }));
+    }
   };
 
   const handleCopyAll = () => {
@@ -291,10 +386,23 @@ const ActionItems = () => {
                         size="sm"
                         variant="outline"
                         className="text-xs h-7 px-2.5 border-gray-200 hover:border-purple-300 hover:text-purple-700"
-                        onClick={handleSendToLinear}
+                        onClick={() => handleSendToLinear(item)}
+                        disabled={sendingToLinear[`${item.id}-${item.meetingId}`]}
                       >
-                        <ExternalLink className="w-3 h-3 mr-1" />
-                        Linear
+                        {sendingToLinear[`${item.id}-${item.meetingId}`]
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><ExternalLink className="w-3 h-3 mr-1" />Linear</>}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-7 px-2.5 border-gray-200 hover:border-orange-300 hover:text-orange-700"
+                        onClick={() => handleSendToAsana(item)}
+                        disabled={sendingToAsana[`${item.id}-${item.meetingId}`]}
+                      >
+                        {sendingToAsana[`${item.id}-${item.meetingId}`]
+                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                          : <><ExternalLink className="w-3 h-3 mr-1" />Asana</>}
                       </Button>
                     </div>
                   </div>
